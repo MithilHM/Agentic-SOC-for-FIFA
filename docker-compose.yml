@@ -1,0 +1,51 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  worker:
+    build: .
+    command: python -m pipeline.worker
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
+
+  simulator:
+    build: .
+    command: python -m simulator.generator
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    environment:
+      - SIM_RATE=2.0
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
+
+  api:
+    build: .
+    command: uvicorn api.server:app --host 0.0.0.0 --port 8080 --reload
+    env_file: .env
+    ports: ["8080:8080"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
+
+  dashboard:
+    build: ./dashboard
+    ports: ["5173:80"]
+    depends_on: [api]
