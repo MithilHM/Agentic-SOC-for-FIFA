@@ -1,12 +1,12 @@
 import { useSoc } from "../store";
 
 const FIFA_ASSETS = [
-  { name: "Official Ticket Portal", icon: "🎫", color: "border-orange-500" },
-  { name: "Payment Gateway",        icon: "💳", color: "border-red-500" },
-  { name: "Admin Console",          icon: "⚙️",  color: "border-purple-500" },
-  { name: "Mobile App API",         icon: "📱", color: "border-blue-500" },
-  { name: "Media Portal",           icon: "📺", color: "border-cyan-500" },
-  { name: "Streaming Platform",     icon: "🎙️", color: "border-green-500" },
+  { name: "Official Ticket Portal", icon: "🎫", color: "border-alert-orange/50" },
+  { name: "Payment Gateway",        icon: "💳", color: "border-critical-red/50" },
+  { name: "Admin Console",          icon: "⚙️",  color: "border-primary/40" },
+  { name: "Mobile App API",         icon: "📱", color: "border-primary/40" },
+  { name: "Media Portal",           icon: "📺", color: "border-primary/40" },
+  { name: "Streaming Platform",     icon: "🎙️", color: "border-security-green/50" },
 ];
 
 export default function AssetMap() {
@@ -23,43 +23,43 @@ export default function AssetMap() {
   }
 
   return (
-    <div className="rounded-xl bg-slate-900 p-4 shadow-lg">
-      <h2 className="text-base font-semibold text-slate-200 mb-3">
+    <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow">
+      <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-4">
         FIFA Asset Threat Map
       </h2>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         {FIFA_ASSETS.map(({ name, icon, color }) => {
           const alerts   = alertsByAsset[name]  || 0;
           const incs     = incsByAsset[name]    || 0;
           const isHot    = alerts > 5;
           return (
             <div key={name}
-                 className={`relative rounded-lg bg-slate-800 border-2 ${color} p-3
-                             transition-all hover:scale-[1.02] cursor-default
-                             ${isHot ? "shadow-lg shadow-red-900/40" : ""}`}>
+                 className={`relative rounded bg-midnight-base/40 border ${color} p-3.5
+                             transition-all hover:scale-[1.01] cursor-default flex flex-col justify-between
+                             ${isHot ? "shadow-md shadow-critical-red/10 border-critical-red/60" : ""}`}>
               {/* Pulse badge if active */}
               {isHot && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-600" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-critical-red opacity-75" />
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-critical-red" />
                 </span>
               )}
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl">{icon}</span>
-                <span className="text-xs font-medium text-slate-200 leading-tight">{name}</span>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">{icon}</span>
+                <span className="text-[10px] font-mono font-bold text-on-surface uppercase tracking-wider leading-tight">{name}</span>
               </div>
-              <div className="flex gap-3 text-xs">
-                <div className="text-center">
-                  <div className={`text-lg font-black ${alerts > 0 ? "text-red-400" : "text-slate-600"}`}>
+              <div className="flex gap-4">
+                <div className="flex flex-col">
+                  <div className={`font-mono text-base font-bold leading-none ${alerts > 0 ? "text-critical-red" : "text-on-tertiary-container/50"}`}>
                     {alerts}
                   </div>
-                  <div className="text-slate-500 uppercase tracking-wide text-[9px]">Alerts</div>
+                  <div className="text-on-tertiary-container/80 uppercase tracking-widest font-mono text-[9px] mt-1">Alerts</div>
                 </div>
-                <div className="text-center">
-                  <div className={`text-lg font-black ${incs > 0 ? "text-orange-400" : "text-slate-600"}`}>
+                <div className="flex flex-col">
+                  <div className={`font-mono text-base font-bold leading-none ${incs > 0 ? "text-alert-orange" : "text-on-tertiary-container/50"}`}>
                     {incs}
                   </div>
-                  <div className="text-slate-500 uppercase tracking-wide text-[9px]">Incidents</div>
+                  <div className="text-on-tertiary-container/80 uppercase tracking-widest font-mono text-[9px] mt-1">Incidents</div>
                 </div>
               </div>
             </div>

@@ -1,19 +1,19 @@
 import { useSoc } from "../store";
 
 const SEV_COLOR = {
-  Critical: "bg-red-600 text-white",
-  High:     "bg-orange-500 text-white",
-  Medium:   "bg-yellow-500 text-black",
-  Low:      "bg-green-600 text-white",
-  Info:     "bg-slate-600 text-white",
+  Critical: "bg-critical-red/15 border border-critical-red/30 text-critical-red",
+  High:     "bg-alert-orange/15 border border-alert-orange/30 text-alert-orange",
+  Medium:   "bg-caution-amber/15 border border-caution-amber/30 text-caution-amber",
+  Low:      "bg-security-green/15 border border-security-green/30 text-security-green",
+  Info:     "bg-on-tertiary-container/15 border border-on-tertiary-container/30 text-on-tertiary-container",
 };
 
 function relTime(ts) {
   if (!ts) return "";
   const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-  if (diff < 60)   return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 60)   return `${diff}S AGO`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}M AGO`;
+  return `${Math.floor(diff / 3600)}H AGO`;
 }
 
 export default function AttackTimeline() {
@@ -22,9 +22,9 @@ export default function AttackTimeline() {
 
   if (!selected) {
     return (
-      <div className="rounded-xl bg-slate-900 p-4 shadow-lg">
-        <h2 className="text-base font-semibold text-slate-200 mb-2">Attack Timeline</h2>
-        <p className="text-slate-500 text-sm">Select an incident to see its kill-chain.</p>
+      <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow">
+        <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-3">Attack Timeline</h2>
+        <p className="text-on-tertiary-container/60 font-mono text-xs">SELECT AN INCIDENT TO INITIALIZE KILL-CHAIN TIMELINE.</p>
       </div>
     );
   }
@@ -35,46 +35,47 @@ export default function AttackTimeline() {
   );
 
   return (
-    <div className="rounded-xl bg-slate-900 p-4 shadow-lg">
-      <h2 className="text-base font-semibold text-slate-200 mb-4">
-        Kill-Chain Timeline — <span className="font-mono text-blue-400">{inc.incident_id}</span>
+    <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow">
+      <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-4 flex items-center">
+        Kill-Chain Timeline
+        <span className="ml-2 text-[10px] text-on-tertiary-container font-mono font-normal">({inc.incident_id})</span>
       </h2>
 
       {alerts.length === 0 ? (
-        <p className="text-slate-500 text-sm">No alert detail loaded yet. Re-select the incident.</p>
+        <p className="text-on-tertiary-container/60 font-mono text-xs">NO ALERT DETAIL LOADED YET. SELECT AND MERGE INCIDENT RECORDS.</p>
       ) : (
         <div className="relative">
           {/* Vertical line */}
-          <div className="absolute left-4 top-0 bottom-0 w-px bg-slate-700" />
+          <div className="absolute left-4 top-0 bottom-0 w-px bg-border-subtle/70" />
 
           <ol className="space-y-4">
             {alerts.map((a, idx) => (
               <li key={a.alert_id} className="relative pl-12">
                 {/* Step dot */}
                 <div className={`absolute left-0 w-8 h-8 rounded-full flex items-center justify-center
-                                text-xs font-bold border-2 border-slate-700
-                                ${idx === 0 ? "bg-blue-600" : "bg-slate-800"} text-white`}>
+                                text-xs font-mono font-bold border
+                                ${idx === 0 ? "bg-primary text-midnight-base border-primary" : "bg-midnight-base text-on-tertiary-container border-border-subtle"}`}>
                   {idx + 1}
                 </div>
 
-                <div className="bg-slate-800 rounded-lg p-3 border border-slate-700">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className={`rounded px-2 py-0.5 text-xs font-bold ${SEV_COLOR[a.severity] || "bg-slate-600 text-white"}`}>
+                <div className="bg-midnight-base/40 rounded-sm p-3.5 border border-border-subtle/60">
+                  <div className="flex items-center gap-2 flex-wrap mb-2">
+                    <span className={`rounded-sm px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider ${SEV_COLOR[a.severity] || "bg-slate-800 text-slate-400"}`}>
                       {a.severity}
                     </span>
-                    <span className="text-xs text-blue-400 font-semibold">{a.event_type}</span>
-                    <span className="text-xs text-slate-400 ml-auto">{relTime(a.timestamp)}</span>
+                    <span className="text-xs text-primary font-mono uppercase tracking-wider font-bold">{a.event_type}</span>
+                    <span className="text-[9px] text-on-tertiary-container/85 font-mono uppercase ml-auto">{relTime(a.timestamp)}</span>
                   </div>
-                  <div className="text-xs text-slate-300 font-mono">
-                    {a.event_source} → {a.source_ip || a.user || "—"}
+                  <div className="text-xs text-on-surface-variant font-mono leading-relaxed">
+                    <span className="text-on-surface font-semibold">{a.event_source}</span> → {a.source_ip || a.user || "—"}
                     {a.mitre_tactic && (
-                      <span className="ml-2 text-purple-400">
-                        [{a.mitre_tactic} / {a.mitre_technique}]
+                      <span className="ml-2 text-primary font-semibold">
+                        [{a.mitre_tactic.toUpperCase()} / {a.mitre_technique}]
                       </span>
                     )}
                   </div>
                   {a.description && (
-                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{a.description}</p>
+                    <p className="text-xs text-on-surface-variant/75 mt-2 leading-relaxed">{a.description}</p>
                   )}
                 </div>
               </li>

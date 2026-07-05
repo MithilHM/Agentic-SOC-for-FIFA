@@ -5,16 +5,16 @@ import {
 } from "recharts";
 
 const TYPE_COLORS = {
-  Phishing:        "#f97316",
-  BruteForce:      "#ef4444",
-  Malware:         "#a855f7",
-  WebAttack:       "#3b82f6",
-  InsiderThreat:   "#eab308",
-  DDoS:            "#ec4899",
-  CredentialTheft: "#14b8a6",
-  Recon:           "#64748b",
-  DataExfil:       "#f43f5e",
-  Other:           "#475569",
+  Phishing:        "#ff9500", // alert-orange
+  BruteForce:      "#ff3b30", // critical-red
+  Malware:         "#ccff00", // primary
+  WebAttack:       "#8b5cf6", // secondary
+  InsiderThreat:   "#ff9500", // caution-amber
+  DDoS:            "#ff3b30", // critical-red
+  CredentialTheft: "#34c759", // security-green
+  Recon:           "#767697", // on-tertiary-container
+  DataExfil:       "#ff9500", // alert-orange
+  Other:           "#1c1c2e", // border-subtle
 };
 
 export default function AttackTrends() {
@@ -28,36 +28,36 @@ export default function AttackTrends() {
 
   if (data.length === 0) {
     return (
-      <div className="rounded-xl bg-slate-900 p-4 shadow-lg flex flex-col">
-        <h2 className="text-base font-semibold text-slate-200 mb-2">Attack Types</h2>
-        <div className="flex-1 flex items-center justify-center text-slate-500 text-sm h-48">
-          Waiting for alerts…
+      <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow flex flex-col">
+        <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-3">Attack Types</h2>
+        <div className="flex-1 flex items-center justify-center text-on-tertiary-container/60 font-mono text-xs py-12">
+          WAITING FOR TELEMETRY…
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl bg-slate-900 p-4 shadow-lg flex flex-col">
-      <h2 className="text-base font-semibold text-slate-200 mb-3">Attack Types (Alert Count)</h2>
+    <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow flex flex-col">
+      <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-4">Attack Types (Alert Count)</h2>
       <ResponsiveContainer width="100%" height={230}>
         <BarChart data={data} margin={{ top: 0, right: 10, left: -20, bottom: 45 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
           <XAxis
             dataKey="name"
-            tick={{ fill: "#94a3b8", fontSize: 10 }}
+            tick={{ fill: "#768197", fontSize: 9, fontFamily: "monospace" }}
             angle={-35}
             textAnchor="end"
             interval={0}
           />
-          <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} allowDecimals={false} />
+          <YAxis tick={{ fill: "#768197", fontSize: 9, fontFamily: "monospace" }} allowDecimals={false} />
           <Tooltip
-            contentStyle={{ background: "#1e293b", border: "none", borderRadius: 8 }}
-            labelStyle={{ color: "#f1f5f9" }}
-            itemStyle={{ color: "#94a3b8" }}
+            contentStyle={{ background: "#020617", border: "1px solid #1e293b", borderRadius: 2 }}
+            labelStyle={{ color: "#d4e4fa", fontFamily: "monospace" }}
+            itemStyle={{ color: "#768197", fontFamily: "monospace", fontSize: 11 }}
             formatter={(v) => [v, "Alerts"]}
           />
-          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="value" radius={[2, 2, 0, 0]}>
             {data.map((entry) => (
               <Cell
                 key={entry.name}

@@ -1,7 +1,67 @@
 @import "tailwindcss";
 
-body {
-  background-color: #0f172a;
-  color: #f8fafc;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+@theme {
+  --color-midnight-base: #05050a;
+  --color-slate-surface: #0c0c16;
+  --color-border-subtle: #1c1c2e;
+  --color-primary: #ccff00;
+  --color-secondary: #8b5cf6;
+  --color-critical-red: #ff3b30;
+  --color-alert-orange: #ff9500;
+  --color-security-green: #34c759;
+  --color-caution-amber: #ff9500;
+  --color-surface-container: #141424;
+  --color-on-tertiary-container: #767697;
+  --color-on-surface: #e5e5f0;
+
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  
+  --radius-DEFAULT: 0.125rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.5rem;
+  --radius-full: 9999px;
+  
+  --spacing-panel-width: 380px;
+  --spacing-margin: 24px;
+  --spacing-base: 4px;
+  --spacing-gutter: 16px;
 }
+
+body {
+  background-color: var(--color-midnight-base);
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@keyframes scan {
+  from { top: -100px; }
+  to { top: 100%; }
+}
+
+.scan-line {
+  background: linear-gradient(to bottom, transparent, rgba(204, 255, 0, 0.08), transparent);
+  height: 100px;
+  width: 100%;
+  position: absolute;
+  animation: scan 4s linear infinite;
+  pointer-events: none;
+}
+
+

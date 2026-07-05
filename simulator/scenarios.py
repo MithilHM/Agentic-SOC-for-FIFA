@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from ingestion.normalizer import normalize
 from ingestion.publisher import publish
 
@@ -14,8 +15,11 @@ def fake_ticket_campaign():
                   "result": "success", "attempts": 41}),
     ]
     for src, raw in steps:
+        if raw.get("ts") is None:
+            raw["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         publish(normalize(src, raw))
         time.sleep(1.5)
 
 if __name__ == "__main__":
     fake_ticket_campaign()
+

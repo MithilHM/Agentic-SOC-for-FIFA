@@ -12,6 +12,9 @@ export const useSoc = create((set, get) => ({
   trends: [],       // [{time, Phishing, BruteForce, …}]
   selected: null,
   connected: false,
+  currentTab: "Command Center",
+
+  setTab(tab) { set({ currentTab: tab }); },
 
   // ── Load all data from API ─────────────────────────────────────────────
   async load() {

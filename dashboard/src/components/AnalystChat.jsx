@@ -60,10 +60,10 @@ export default function AnalystChat() {
   };
 
   const ROLE_STYLE = {
-    system:    "text-slate-400 italic text-xs text-center",
-    user:      "bg-blue-700/30 border border-blue-800 text-slate-200 self-end",
-    assistant: "bg-slate-800 border border-slate-700 text-slate-300",
-    error:     "bg-red-900/30 border border-red-800 text-red-300 text-xs",
+    system:    "text-on-tertiary-container/85 italic text-[10px] font-mono text-center bg-midnight-base/30 border border-border-subtle/40 py-2 rounded-sm w-full",
+    user:      "bg-secondary/5 border border-secondary/20 text-on-surface self-end max-w-[85%] rounded-sm shadow-sm",
+    assistant: "bg-midnight-base/40 border border-border-subtle text-on-surface/95 max-w-[85%] rounded-sm shadow-sm",
+    error:     "bg-critical-red/10 border border-critical-red/30 text-critical-red text-[10px] font-mono rounded-sm w-full",
   };
 
   const QUICK = [
@@ -74,11 +74,11 @@ export default function AnalystChat() {
   ];
 
   return (
-    <div className="rounded-xl bg-slate-900 p-4 shadow-lg flex flex-col gap-3">
-      <h2 className="text-base font-semibold text-slate-200">
+    <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow flex flex-col gap-4">
+      <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary flex items-center">
         🤖 AI Security Analyst
         {inc && (
-          <span className="ml-2 text-xs text-blue-400 font-mono font-normal">
+          <span className="ml-2 text-[10px] text-on-tertiary-container font-mono font-normal">
             ({inc.incident_id})
           </span>
         )}
@@ -86,12 +86,12 @@ export default function AnalystChat() {
 
       {/* Quick actions */}
       {selected && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5">
           {QUICK.map(q => (
             <button key={q}
                     onClick={() => setInput(q)}
-                    className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300
-                               rounded-full px-2 py-0.5 border border-slate-700 transition-colors">
+                    className="text-[9px] font-mono bg-midnight-base hover:bg-surface-container text-on-tertiary-container
+                               border border-border-subtle rounded-sm px-2.5 py-1.5 transition-colors uppercase tracking-wider font-bold active:scale-[0.98]">
               {q}
             </button>
           ))}
@@ -99,22 +99,22 @@ export default function AnalystChat() {
       )}
 
       {/* Message thread */}
-      <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1 scroll-smooth">
+      <div className="flex flex-col gap-3 max-h-64 overflow-y-auto pr-1 scroll-smooth scroll-hide">
         {messages.map((m, i) => (
-          <div key={i} className={`rounded-lg px-3 py-2 text-sm ${ROLE_STYLE[m.role]}`}>
+          <div key={i} className={`rounded-sm px-3.5 py-2.5 text-xs ${ROLE_STYLE[m.role]} flex flex-col`}>
             {m.role === "user" && (
-              <span className="text-[10px] text-blue-400 block mb-0.5 font-semibold">You</span>
+              <span className="text-[9px] font-mono text-secondary block mb-1 font-bold uppercase tracking-wider">YOU</span>
             )}
             {m.role === "assistant" && (
-              <span className="text-[10px] text-emerald-400 block mb-0.5 font-semibold">AI Analyst</span>
+              <span className="text-[9px] font-mono text-security-green block mb-1 font-bold uppercase tracking-wider">AI ANALYST</span>
             )}
             <p className="whitespace-pre-wrap leading-relaxed">{m.text}</p>
           </div>
         ))}
         {loading && (
-          <div className="flex items-center gap-2 text-slate-400 text-sm px-3">
+          <div className="flex items-center gap-2 text-on-tertiary-container font-mono text-xs px-2.5">
             <span className="animate-pulse">●●●</span>
-            <span className="text-xs">AI is investigating…</span>
+            <span>AI IS INVESTIGATING…</span>
           </div>
         )}
         <div ref={bottomRef} />
@@ -125,18 +125,19 @@ export default function AnalystChat() {
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder={selected ? "Ask AI about this incident…" : "Select an incident first…"}
+          placeholder={selected ? "ASK AI ABOUT THIS INCIDENT…" : "SELECT AN INCIDENT FIRST…"}
           disabled={!selected || loading}
-          className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2
-                     text-sm text-white placeholder-slate-500 focus:outline-none
-                     focus:border-blue-500 disabled:opacity-50 transition-colors"
+          className="flex-1 bg-midnight-base border border-border-subtle rounded-sm px-3.5 py-2.5
+                     text-xs font-mono text-on-surface placeholder-on-tertiary-container/60 focus:outline-none
+                     focus:border-primary/50 disabled:opacity-50 transition-colors"
         />
         <button
           type="submit"
           disabled={!selected || !input.trim() || loading}
-          className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white
-                     px-4 py-2 rounded-lg text-sm font-semibold transition-colors">
-          Send
+          className="bg-primary hover:bg-primary/95 text-midnight-base disabled:opacity-40
+                     px-5 py-2.5 rounded-sm text-xs font-mono font-bold tracking-wider uppercase transition-colors shrink-0"
+        >
+          SEND
         </button>
       </form>
     </div>

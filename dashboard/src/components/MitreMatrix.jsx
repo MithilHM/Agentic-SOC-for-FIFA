@@ -35,11 +35,11 @@ export default function MitreMatrix() {
   const activeTechniques  = new Set(inc?.techniques || incidents.flatMap(i => i.techniques || []));
 
   return (
-    <div className="rounded-xl bg-slate-900 p-4 shadow-lg overflow-x-auto">
-      <h2 className="text-base font-semibold text-slate-200 mb-3">
+    <div className="rounded bg-slate-surface border border-border-subtle p-5 shadow overflow-x-auto scroll-hide">
+      <h2 className="font-mono text-xs uppercase tracking-wider font-bold text-primary mb-4 flex items-center">
         MITRE ATT&amp;CK Matrix
-        {inc && <span className="ml-2 text-xs text-blue-400 font-mono">({inc.incident_id})</span>}
-        {!inc && <span className="ml-2 text-xs text-slate-500">(all incidents)</span>}
+        {inc && <span className="ml-2 text-[10px] text-on-tertiary-container font-mono font-normal">({inc.incident_id})</span>}
+        {!inc && <span className="ml-2 text-[10px] text-on-tertiary-container/60 font-mono font-normal">(ALL INCIDENTS)</span>}
       </h2>
 
       <div className="flex gap-2 min-w-max">
@@ -47,12 +47,12 @@ export default function MitreMatrix() {
           const isActive = activeTactics.has(tactic);
           const techniques = TECHNIQUE_MAP[tactic] || [];
           return (
-            <div key={tactic} className="flex flex-col gap-1 min-w-[110px]">
+            <div key={tactic} className="flex flex-col gap-1.5 min-w-[115px]">
               {/* Tactic header */}
-              <div className={`rounded-t px-2 py-1 text-center text-xs font-bold uppercase tracking-wide
+              <div className={`rounded px-2.5 py-1.5 text-center text-[9px] font-mono font-bold uppercase tracking-wider
                 ${isActive
-                  ? "bg-red-700 text-white"
-                  : "bg-slate-800 text-slate-500"}`}>
+                  ? "bg-secondary/10 border border-secondary/30 text-secondary"
+                  : "bg-midnight-base/50 border border-border-subtle/50 text-on-tertiary-container/60"}`}>
                 {tactic.replace(" ", "\u00A0")}
               </div>
               {/* Technique cells */}
@@ -61,12 +61,12 @@ export default function MitreMatrix() {
                 return (
                   <div key={tech.id}
                        title={`${tech.id}: ${tech.name}`}
-                       className={`rounded px-2 py-1 text-xs cursor-default transition-all
+                       className={`rounded px-2.5 py-1.5 text-[10px] cursor-default transition-all duration-200
                          ${techActive
-                           ? "bg-red-900/70 text-red-300 border border-red-700 font-semibold"
-                           : "bg-slate-800/50 text-slate-500 border border-slate-700"}`}>
-                    <div className="font-mono text-[10px] text-slate-400">{tech.id}</div>
-                    <div className="leading-tight">{tech.name}</div>
+                           ? "bg-primary/10 text-primary border border-primary/30 font-bold shadow-sm shadow-primary/5"
+                           : "bg-midnight-base/20 text-on-tertiary-container/50 border border-border-subtle/40"}`}>
+                    <div className="font-mono text-[9px] text-on-tertiary-container/85 mb-0.5">{tech.id}</div>
+                    <div className="leading-tight text-on-surface/90">{tech.name}</div>
                   </div>
                 );
               })}
