@@ -2,19 +2,24 @@
 pipeline/enrichment.py — Threat-Intel Enrichment layer.
 
 Decorates an OCSFAlert with:
-  - GeoIP country + reputation score (offline lookup, optional live via ipapi.co)
-  - WHOIS domain age estimate (suspicious if < 30 days, keyword-based for demo)
+  - GeoIP country + IP reputation (curated offline list, else live geo + public
+    blocklist reputation when ENABLE_LIVE_INTEL=1)
+  - WHOIS domain age (real lookup when ENABLE_LIVE_INTEL=1, else keyword heuristic)
+  - Visual/brand-impersonation similarity score (domain-similarity algorithm)
   - Primary IOC selection (Domain > URL > IP > User) for correlation key
   - MITRE ATT&CK tactic/technique mapping (ML event_type → MITRE, with source fallback)
 
 External calls are guarded by ENABLE_LIVE_INTEL=1 so the demo runs fully offline.
 """
+import difflib
 import logging
 import os
 
 import httpx
 
 from intel.mitre import map_to_attack
+from intel.reputation import ip_reputation
+from intel.whois_lookup import lookup_domain_age
 from schema.ocsf import OCSFAlert
 
 logger = logging.getLogger(__name__)
@@ -46,11 +51,10 @@ _SOURCE_MITRE_FALLBACK = {
     "Streaming": ("Impact",           "T1498"),
 }
 
-# Suspicious domain keywords for WHOIS estimate
-_SUSPICIOUS_KEYWORDS = [
-    "secure2026", "ticket2026", "fifalogin", "wc2026",
-    "fifa-login", "fifa-ticket", "fifapass",
-]
+# Legitimate FIFA brand domains — reference set for impersonation scoring
+_LEGIT_BRAND_DOMAINS = ["fifa.com", "fifaplus.com", "fifa.org"]
+_BRAND_TOKEN = "fifa"
+_SUSPICIOUS_TLDS = (".xyz", ".top", ".ru", ".tk", ".click", ".info")
 
 
 # ---------------------------------------------------------------------------
@@ -61,20 +65,46 @@ def _geo_and_rep(ip: str) -> tuple[str, int]:
     """Return (country, reputation_score) for an IP address."""
     if ip in _KNOWN_BAD_IPS:
         return _KNOWN_BAD_IPS[ip]
+
+    country = "Unknown"
+    rep     = 10
+
     if os.getenv("ENABLE_LIVE_INTEL") == "1" and ip:
         try:
             g = httpx.get(f"https://ipapi.co/{ip}/json/", timeout=3).json()
-            return g.get("country_name", "Unknown"), 20
+            country = g.get("country_name", "Unknown")
         except Exception as e:
             logger.debug("Live IP lookup failed: %s", e)
-    return "Unknown", 10
+
+        blocklist = ip_reputation(ip)
+        if blocklist["reputation_score"] is not None:
+            rep = blocklist["reputation_score"]
+
+    return country, rep
 
 
-def _estimate_whois_age(domain: str) -> int:
-    """Estimate WHOIS age in days. Newly registered suspicious domains → 2 days."""
-    if any(kw in domain.lower() for kw in _SUSPICIOUS_KEYWORDS):
-        return 2
-    return 400   # established domain assumption
+def _domain_similarity_score(domain: str) -> int:
+    """
+    Score (0-100) how much a domain resembles/impersonates a known FIFA brand
+    domain — real string-similarity + typosquat heuristics, not a fixed value.
+    """
+    domain_l = domain.lower()
+    if domain_l in _LEGIT_BRAND_DOMAINS:
+        return 0
+
+    base = domain_l.split(".")[0]
+    best_ratio = max(
+        difflib.SequenceMatcher(None, base, legit.split(".")[0]).ratio()
+        for legit in _LEGIT_BRAND_DOMAINS
+    )
+
+    score = best_ratio * 60
+    if _BRAND_TOKEN in domain_l:
+        score += 30   # contains the brand name but isn't the real domain
+    if domain_l.endswith(_SUSPICIOUS_TLDS):
+        score += 10
+
+    return min(100, round(score))
 
 
 # ---------------------------------------------------------------------------
@@ -94,12 +124,15 @@ def enrich(a: OCSFAlert) -> OCSFAlert:
 
     # ── WHOIS age ─────────────────────────────────────────────────────────
     if a.domain and a.whois_age_days is None:
-        a.whois_age_days = _estimate_whois_age(a.domain)
+        whois_info = lookup_domain_age(a.domain)
+        a.whois_age_days = whois_info["age_days"]
 
-    # ── SSL / visual similarity (stub values for demo) ────────────────────
-    if a.domain and any(kw in a.domain.lower() for kw in _SUSPICIOUS_KEYWORDS):
-        a.visual_similarity_score = a.visual_similarity_score or 92
-        a.ssl_valid               = True   # phishing sites do get certs
+    # ── Brand-impersonation / visual similarity ──────────────────────────
+    if a.domain:
+        sim = _domain_similarity_score(a.domain)
+        if sim > 0:
+            a.visual_similarity_score = a.visual_similarity_score or sim
+            a.ssl_valid               = True   # phishing sites do get certs too
 
     # ── Primary IOC for correlation ───────────────────────────────────────
     if not a.ioc_value:

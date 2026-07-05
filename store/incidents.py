@@ -95,7 +95,18 @@ class IncidentStore:
     # ── Export ────────────────────────────────────────────────────────────
 
     def export_sqlite(self, db_path: str = "incidents.db") -> None:
-        """Export all incidents to a SQLite database for offline analysis."""
+        """Export all incidents (fetched fresh from Redis) to a SQLite database."""
+        self.export_sqlite_data(self.all(), db_path)
+
+    @staticmethod
+    def export_sqlite_data(incs: list[dict], db_path: str = "incidents.db") -> None:
+        """
+        Write pre-fetched incidents to a SQLite database for offline analysis.
+        Split from export_sqlite() so callers that already hold the incident
+        list (e.g. an async API endpoint) don't need a second Redis round-trip
+        and don't block on this class's synchronous Redis client.
+        """
+        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
         conn = sqlite3.connect(db_path)
         cur  = conn.cursor()
         cur.execute("""
@@ -114,7 +125,6 @@ class IncidentStore:
                 raw_json TEXT
             )
         """)
-        incs = self.all()
         for inc in incs:
             cur.execute("""
                 INSERT OR REPLACE INTO incidents VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
@@ -135,3 +145,7 @@ class IncidentStore:
         conn.commit()
         conn.close()
         logger.info("Exported %d incidents to %s", len(incs), db_path)
+
+
+if __name__ == "__main__":
+    IncidentStore().export_sqlite(os.path.join("data", "incidents_export.db"))

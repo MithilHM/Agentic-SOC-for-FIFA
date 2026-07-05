@@ -9,6 +9,7 @@ import json
 import math
 import os
 import logging
+from datetime import datetime, timezone
 
 from schema.ocsf import OCSFAlert, ATTACK_TYPES
 
@@ -61,6 +62,23 @@ def _entropy(s: str) -> float:
     return round(-sum(x * math.log2(x) for x in p), 2)
 
 
+# Outside 06:00-22:00 UTC is treated as off-hours for a global FIFA platform.
+_BUSINESS_START_HOUR = 6
+_BUSINESS_END_HOUR   = 22
+
+
+def _off_hours(timestamp: str) -> int:
+    """Return 1 if the alert timestamp falls outside business hours (UTC)."""
+    if not timestamp:
+        return 0
+    try:
+        ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError:
+        return 0
+    hour = ts.astimezone(timezone.utc).hour
+    return int(hour < _BUSINESS_START_HOUR or hour >= _BUSINESS_END_HOUR)
+
+
 def _featurize(a: OCSFAlert) -> dict:
     url = a.url or ""
     return {
@@ -69,8 +87,8 @@ def _featurize(a: OCSFAlert) -> dict:
         "visual_similarity_score":a.visual_similarity_score or 0,
         "threat_intel_score":     a.threat_intel_score or 0,
         "src_is_known_bad":       int((a.source_ip or "") in KNOWN_BAD),
-        "failed_attempts":        0,   # parser may set via raw["attempts"]
-        "off_hours":              0,   # TODO: derive from timestamp
+        "failed_attempts":        a.failed_attempts or 0,
+        "off_hours":              _off_hours(a.timestamp),
         "is_external":            int(bool(a.source_ip)
                                       and not (a.source_ip or "").startswith("10.")),
         "url_entropy":            _entropy(url),

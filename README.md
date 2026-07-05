@@ -2,7 +2,7 @@
 
 An end-to-end AI-Powered Security Operations Center (SOC) platform designed to ingest, normalize, triage, correlate, and investigate security alerts across FIFA's digital ecosystem (ticketing, payments, media portals, mobile apps, streaming services, and admin consoles) during high-profile tournaments.
 
-## 🏗️ Architecture & Data Flow
+##  Architecture & Data Flow
 
 The platform is structured into five core layers:
 
@@ -64,14 +64,14 @@ flowchart TB
 ### Core Features
 - **Multi-Source Ingestion**: Collects events from 11 distinct native formats (Firewall, WAF, EDR, DNS, etc.) and normalizes them into an **OCSF-style schema**.
 - **ML Triage & False-Positive Mitigation**: Uses an **XGBoost** multi-class classifier to categorize attacks and filter noise, auto-downgrading low-confidence events.
-- **Threat-Intel Enrichment**: Automatically decorates alerts with GeoIP information, WHOIS domain age, and maps them to the **MITRE ATT&CK** matrix.
+- **Threat-Intel Enrichment**: Decorates alerts with GeoIP, real WHOIS domain-age lookups, IP reputation checked against free public blocklists (Spamhaus DROP, Tor exit list, FireHOL), a domain-similarity/typosquat scorer, and mapping against the full **697-technique MITRE ATT&CK** catalogue. Live lookups are gated behind `ENABLE_LIVE_INTEL=1`; offline heuristics keep the demo deterministic otherwise.
 - **Rule-Based Correlation**: Groups associated alerts into high-priority **incidents** based on shared IOCs (IPs, domains, hashes), users, or assets.
-- **Agentic LLM Analyst (LangGraph)**: Powers a multi-step agent capable of calling inspection tools (`enrich_ip`, `check_whois`, `assess_business_impact`, `escalate_priority`) to build deep incident summaries and answer user queries.
+- **Agentic LLM Analyst (LangGraph + Pinecone RAG)**: A real `langgraph` ReAct agent calls inspection tools (`enrich_ip`, `check_whois`, `lookup_mitre`, `assess_business_impact`, `escalate_priority`) to build deep incident summaries and answer user queries, grounded with similar past incidents and ATT&CK technique guidance retrieved from a Pinecone vector index.
 - **Real-Time SOC Dashboard**: Provides live incident ledgers, charts, timelines, affected asset maps, and a MITRE tactic matrix powered by FastAPIs WebSockets.
 
 ---
 
-## 📋 OCSF Canonical Alert Schema
+##  OCSF Canonical Alert Schema
 
 Every ingested alert is parsed into a standardized OCSF (Open Cybersecurity Schema Framework) structure:
 
@@ -109,7 +109,7 @@ Every ingested alert is parsed into a standardized OCSF (Open Cybersecurity Sche
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 - Python 3.12+
@@ -122,6 +122,8 @@ Every ingested alert is parsed into a standardized OCSF (Open Cybersecurity Sche
    ```bash
    cp .env.example .env
    # Add your GEMINI_API_KEY for the Agentic LLM Analyst features
+   # Add your PINECONE_API_KEY to enable RAG-grounded investigations
+   # Set ENABLE_LIVE_INTEL=1 to turn on real WHOIS/IP-reputation/GeoIP lookups
    ```
 
 2. **Setup Python Virtual Environment**:
@@ -169,7 +171,7 @@ npm install && npm run dev
 
 ---
 
-## 🎭 Demo Scenario (Fake FIFA Ticket Campaign)
+##  Demo Scenario (Fake FIFA Ticket Campaign)
 
 To verify the platform's multi-stage correlation capabilities, run the scripted simulation:
 

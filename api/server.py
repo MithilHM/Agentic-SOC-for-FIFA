@@ -1,6 +1,8 @@
-import os, json, asyncio, redis.asyncio as aioredis
+import os, json, time, asyncio, redis.asyncio as aioredis
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+
+from store.incidents import IncidentStore
 
 app = FastAPI(title="FIFA AI-SIEM API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -38,6 +40,14 @@ async def ask(inc_id: str, body: dict):
     from pipeline.llm_assistant import answer_query
     return {"answer": answer_query(inc_id, body.get("question", ""))}
 
+@app.post("/api/export")
+async def export_incidents():
+    """Export all incidents to a SQLite file for offline/forensic analysis."""
+    incs = [json.loads(await R.get(key)) async for key in R.scan_iter("incident:*")]
+    db_path = os.path.join("data", f"incidents_export_{int(time.time())}.db")
+    await asyncio.to_thread(IncidentStore.export_sqlite_data, incs, db_path)
+    return {"status": "exported", "path": db_path, "count": len(incs)}
+
 @app.websocket("/api/ws/incidents")
 async def ws(sock: WebSocket):
     await sock.accept()
@@ -51,4 +61,9 @@ async def ws(sock: WebSocket):
     except Exception:
         pass
     finally:
+        # unsubscribe() alone leaves the pubsub's dedicated connection checked
+        # out of the pool forever — aclose() is what actually returns it.
+        # Without this, every WS disconnect/reconnect leaked one connection
+        # until the pool (default 100) was exhausted and the whole API 500'd.
         await pub.unsubscribe("incidents.live")
+        await pub.aclose()

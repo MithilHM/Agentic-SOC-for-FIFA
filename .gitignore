@@ -34,7 +34,8 @@ node_modules/
 # Databases & local runs
 *.db
 *.sqlite
-data/
+/data/
+intel/data/blocklist_cache.json
 
 # Caches & tools
 .pytest_cache/

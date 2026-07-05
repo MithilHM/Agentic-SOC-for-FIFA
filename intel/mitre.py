@@ -1,4 +1,19 @@
-import json, os
+"""
+intel/mitre.py — MITRE ATT&CK mapping + technique catalogue.
+
+map_to_attack() maps our internal event_type enum to a representative
+(tactic, technique) pair — used by the enrichment layer.
+
+lookup_technique() looks up a specific technique ID (e.g. "T1566.002") against
+the full ATT&CK Enterprise catalogue (697 techniques, pre-extracted from the
+official MITRE STIX bundle into intel/data/mitre_catalogue.json so no network
+call or the 50MB+ raw bundle is needed at runtime).
+"""
+import json
+import logging
+import os
+
+logger = logging.getLogger(__name__)
 
 _STATIC = {
     "Phishing": ("Initial Access", "T1566"),
@@ -13,18 +28,54 @@ _STATIC = {
     "Other": (None, None),
 }
 
+_CATALOGUE_PATH = os.path.join(os.path.dirname(__file__), "data", "mitre_catalogue.json")
+_catalogue: dict | None = None
+
+
 def map_to_attack(event_type: str):
     return _STATIC.get(event_type, (None, None))
 
-def load_catalogue(path="../cspm-ebpf/enterprise-attack.json"):
-    """Optional: index the full MITRE STIX bundle for richer lookups / RAG."""
+
+def load_catalogue(path: str = _CATALOGUE_PATH) -> dict:
+    """Load (and cache) the full MITRE ATT&CK technique catalogue."""
+    global _catalogue
+    if _catalogue is not None:
+        return _catalogue
+
     if not os.path.exists(path):
-        return {}
-    bundle = json.load(open(path, encoding="utf-8"))
-    out = {}
-    for obj in bundle.get("objects", []):
-        if obj.get("type") == "attack-pattern":
-            for ref in obj.get("external_references", []):
-                if ref.get("source_name") == "mitre-attack":
-                    out[ref["external_id"]] = obj.get("name")
-    return out
+        logger.warning("MITRE catalogue not found at %s — technique lookups will use static fallback only", path)
+        _catalogue = {}
+        return _catalogue
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            _catalogue = json.load(f)
+        logger.info("Loaded MITRE ATT&CK catalogue: %d techniques", len(_catalogue))
+    except Exception as e:
+        logger.error("Failed to load MITRE catalogue: %s", e)
+        _catalogue = {}
+    return _catalogue
+
+
+def lookup_technique(technique_id: str) -> dict:
+    """
+    Look up a technique ID against the full ATT&CK catalogue.
+    Returns {"technique": id, "name": ..., "description": ..., "tactics": [...], "source": ...}.
+    """
+    catalogue = load_catalogue()
+    entry = catalogue.get(technique_id)
+    if entry:
+        return {
+            "technique": technique_id,
+            "name": entry.get("name"),
+            "description": entry.get("description"),
+            "tactics": entry.get("tactics", []),
+            "source": "mitre-attack-catalogue",
+        }
+    return {
+        "technique": technique_id,
+        "name": None,
+        "description": "No description available for this technique.",
+        "tactics": [],
+        "source": "unknown",
+    }

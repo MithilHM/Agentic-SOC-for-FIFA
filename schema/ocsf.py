@@ -32,6 +32,7 @@ class OCSFAlert(BaseModel):
     ssl_valid: Optional[bool] = None
     visual_similarity_score: Optional[int] = None
     threat_intel_score: Optional[int] = None
+    failed_attempts: Optional[int] = None
     mitre_tactic: Optional[str] = None
     mitre_technique: Optional[str] = None
     ioc_type: Optional[str] = None

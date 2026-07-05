@@ -1,21 +1,18 @@
 """
 pipeline/llm_assistant.py — LangGraph Agentic Security Analyst
 
-Architecture (agentic loop):
-  [analyst_node] → decides which tool to call
-       ↓
-  [tool_node]    → executes chosen tool (enrich_ip, lookup_mitre, etc.)
-       ↓
-  [observe_node] → processes tool result, appends to state
-       ↓
-  loops back to analyst_node until DONE or max steps
+Architecture:
+  A real LangGraph ReAct agent (langgraph.prebuilt.create_react_agent) reasons
+  over the incident, calling tools (enrich_ip, lookup_mitre, check_whois,
+  assess_business_impact, escalate_priority) to gather intel, then calls
+  `submit_report` — itself a tool — to emit its structured final answer. That
+  sidesteps fragile "please output exactly this JSON" text parsing: the
+  model's tool call *is* the structured output.
 
-Tools available to the agent:
-  - enrich_ip(ip)          → geo + reputation + ASN
-  - lookup_mitre(technique) → tactic/technique description
-  - check_whois(domain)    → domain age + registrar
-  - assess_business_impact(asset) → FIFA criticality + blast radius
-  - escalate_priority(incident_id, reason) → bumps incident priority in Redis
+Retrieval augmentation (intel/rag.py, Pinecone): before the agent runs, it's
+given similar past incidents and MITRE technique guidance retrieved from a
+vector index as grounding context. After the agent finishes, the incident is
+embedded and upserted back into the index so future incidents can retrieve it.
 
 When GEMINI_API_KEY is missing, summarize_incident() returns a static
 heuristic summary so the pipeline never crashes.
@@ -25,10 +22,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
-from typing import Any, Literal, TypedDict
 
 import redis
+
+from intel import rag
+from intel.mitre import lookup_technique
+from intel.reputation import ip_reputation
+from intel.whois_lookup import lookup_domain_age
 
 logger = logging.getLogger(__name__)
 
@@ -38,26 +40,13 @@ logger = logging.getLogger(__name__)
 r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
 
 # ---------------------------------------------------------------------------
-# Known intelligence (offline fallbacks)
+# Known intelligence (offline fallbacks — used when live intel is unavailable)
 # ---------------------------------------------------------------------------
 
 _KNOWN_BAD_IPS: dict[str, dict] = {
     "185.174.21.14": {"country": "Russia",      "asn": "AS-BFNET",   "reputation": 95},
     "45.155.205.99": {"country": "Netherlands", "asn": "AS-SERVERS", "reputation": 88},
     "193.169.255.10":{"country": "Belarus",     "asn": "AS-BYNET",   "reputation": 82},
-}
-
-_MITRE_DESCRIPTIONS: dict[str, str] = {
-    "T1566":  "Phishing — adversary sends malicious emails to gain initial access.",
-    "T1566.002": "Spear-phishing Link — targeted phishing with crafted URL.",
-    "T1110":  "Brute Force — repeated credential guessing against auth service.",
-    "T1555":  "Credentials from Password Stores — stealing stored credentials.",
-    "T1204":  "User Execution — adversary relies on user to execute malicious code.",
-    "T1190":  "Exploit Public-Facing Application — exploiting web vulnerabilities.",
-    "T1052":  "Exfiltration Over Physical Medium — using insider/USB to exfil data.",
-    "T1041":  "Exfiltration Over C2 Channel — sending data over C2 connection.",
-    "T1498":  "Network Denial of Service — flooding resources to disrupt availability.",
-    "T1595":  "Active Scanning — systematic probing to map target infrastructure.",
 }
 
 _ASSET_CRITICALITY: dict[str, dict] = {
@@ -69,63 +58,64 @@ _ASSET_CRITICALITY: dict[str, dict] = {
     "Mobile App API":        {"level": "HIGH",     "blast_radius": "User data exposure, API abuse"},
 }
 
+_MAX_STEPS = 8  # tool-call budget per investigation
+
 # ---------------------------------------------------------------------------
-# Tool implementations
+# Tool implementations (plain functions — wrapped as LangChain tools below)
 # ---------------------------------------------------------------------------
 
 def _tool_enrich_ip(ip: str) -> dict:
-    """Look up IP reputation and geolocation. Returns inline for offline demo."""
+    """IP reputation + geolocation: offline curated list first, then live
+    geolocation + public-blocklist reputation (Spamhaus/Tor/FireHOL) when
+    ENABLE_LIVE_INTEL=1."""
     if ip in _KNOWN_BAD_IPS:
         info = _KNOWN_BAD_IPS[ip]
-        return {
-            "ip": ip,
-            "country": info["country"],
-            "asn": info["asn"],
-            "reputation_score": info["reputation"],
-            "is_known_threat": True,
-            "source": "offline-intel",
-        }
+        return {"ip": ip, "country": info["country"], "asn": info["asn"],
+                "reputation_score": info["reputation"], "is_known_threat": True,
+                "source": "offline-intel"}
+
+    country, asn = "Unknown", "Unknown"
     if os.getenv("ENABLE_LIVE_INTEL") == "1":
         try:
             import httpx
             data = httpx.get(f"https://ipapi.co/{ip}/json/", timeout=3).json()
-            return {
-                "ip": ip,
-                "country": data.get("country_name", "Unknown"),
-                "asn": data.get("org", "Unknown"),
-                "reputation_score": 20,
-                "is_known_threat": False,
-                "source": "ipapi.co",
-            }
+            country = data.get("country_name", "Unknown")
+            asn     = data.get("org", "Unknown")
         except Exception as e:
-            logger.debug("Live IP lookup failed for %s: %s", ip, e)
-    return {"ip": ip, "country": "Unknown", "reputation_score": 10,
+            logger.debug("Live IP geolocation failed for %s: %s", ip, e)
+
+        blocklist = ip_reputation(ip)
+        if blocklist["reputation_score"] is not None:
+            return {"ip": ip, "country": country, "asn": asn,
+                    "reputation_score": blocklist["reputation_score"],
+                    "is_known_threat": blocklist["is_listed"],
+                    "blocklist_sources": blocklist["sources"],
+                    "source": "public-blocklists" if blocklist["is_listed"] else "public-blocklists-clean"}
+
+    return {"ip": ip, "country": country, "asn": asn, "reputation_score": 10,
             "is_known_threat": False, "source": "default"}
 
 
 def _tool_lookup_mitre(technique: str) -> dict:
-    """Look up MITRE ATT&CK technique description."""
-    desc = _MITRE_DESCRIPTIONS.get(technique, "No description available for this technique.")
-    return {"technique": technique, "description": desc, "source": "mitre-static-db"}
+    """Look up a MITRE ATT&CK technique against the full 697-technique catalogue."""
+    return lookup_technique(technique)
 
 
 def _tool_check_whois(domain: str) -> dict:
-    """Estimate WHOIS domain age. Suspicious if < 30 days."""
-    suspicious_patterns = ["secure2026", "ticket2026", "fifalogin", "wc2026"]
-    is_suspicious = any(p in domain.lower() for p in suspicious_patterns)
-    age_days = 2 if is_suspicious else 365
+    """Domain registration age — real WHOIS when ENABLE_LIVE_INTEL=1, heuristic otherwise."""
+    info = lookup_domain_age(domain)
     return {
         "domain": domain,
-        "estimated_age_days": age_days,
-        "is_suspicious": is_suspicious,
-        "note": "Newly registered typosquatting domain" if is_suspicious else "Established domain",
+        "estimated_age_days": info["age_days"],
+        "is_suspicious": info["is_suspicious"],
+        "source": info["source"],
+        "note": "Newly registered domain" if info["is_suspicious"] else "Established domain",
     }
 
 
 def _tool_assess_business_impact(asset: str) -> dict:
     """Return FIFA asset criticality and blast radius."""
-    info = _ASSET_CRITICALITY.get(asset, {
-        "level": "LOW", "blast_radius": "Limited operational impact"})
+    info = _ASSET_CRITICALITY.get(asset, {"level": "LOW", "blast_radius": "Limited operational impact"})
     return {"asset": asset, **info}
 
 
@@ -136,53 +126,94 @@ def _tool_escalate_priority(incident_id: str, reason: str) -> dict:
         return {"status": "error", "message": "Incident not found"}
     inc = json.loads(raw)
     old_priority = inc.get("priority", "P4")
-    # Escalate one step: P4→P3→P2→P1
     escalation = {"P4": "P3", "P3": "P2", "P2": "P1", "P1": "P1"}
     inc["priority"] = escalation.get(old_priority, "P1")
     inc["escalation_reason"] = reason
     inc["escalated_at"] = time.time()
     r.set(f"incident:{incident_id}", json.dumps(inc))
-    return {
-        "status": "escalated",
-        "old_priority": old_priority,
-        "new_priority": inc["priority"],
-        "reason": reason,
-    }
+    return {"status": "escalated", "old_priority": old_priority,
+            "new_priority": inc["priority"], "reason": reason}
 
 
-_TOOLS = {
-    "enrich_ip":             _tool_enrich_ip,
-    "lookup_mitre":          _tool_lookup_mitre,
-    "check_whois":           _tool_check_whois,
-    "assess_business_impact":_tool_assess_business_impact,
-    "escalate_priority":     _tool_escalate_priority,
-}
+# ---------------------------------------------------------------------------
+# LangGraph ReAct agent
+# ---------------------------------------------------------------------------
 
-_TOOL_SCHEMA = """Available tools (call ONE per step):
-  enrich_ip(ip: str)                           → IP reputation + country + ASN
-  lookup_mitre(technique: str)                 → MITRE ATT&CK technique description
-  check_whois(domain: str)                     → domain age + suspicion flag
-  assess_business_impact(asset: str)           → FIFA asset criticality + blast radius
-  escalate_priority(incident_id: str, reason: str) → bump incident priority in Redis
+def _build_tools():
+    from langchain_core.tools import tool
 
-To call a tool, output EXACTLY this JSON (no other text):
-{"tool": "<name>", "args": {"<param>": "<value>"}}
+    @tool
+    def enrich_ip(ip: str) -> dict:
+        """Look up an IP's reputation, geolocation, and ASN."""
+        return _tool_enrich_ip(ip)
 
-When you have enough information, output EXACTLY this JSON:
-{"done": true, "summary": "...", "attack_narrative": "...",
- "recommended_action": "...", "confidence": <int 0-100>}
-"""
+    @tool
+    def lookup_mitre(technique: str) -> dict:
+        """Look up a MITRE ATT&CK technique ID (e.g. 'T1566.002') for its name, description, and tactics."""
+        return _tool_lookup_mitre(technique)
+
+    @tool
+    def check_whois(domain: str) -> dict:
+        """Check a domain's registration age and whether it looks newly-registered/suspicious."""
+        return _tool_check_whois(domain)
+
+    @tool
+    def assess_business_impact(asset: str) -> dict:
+        """Assess a FIFA asset's criticality level and blast radius if compromised."""
+        return _tool_assess_business_impact(asset)
+
+    @tool
+    def escalate_priority(incident_id: str, reason: str) -> dict:
+        """Escalate an incident's priority by one level (e.g. P3 -> P2), with a reason."""
+        return _tool_escalate_priority(incident_id, reason)
+
+    @tool
+    def submit_report(summary: str, attack_narrative: str, recommended_action: str, confidence: int) -> dict:
+        """Submit the final investigation report. Call this exactly once, after you've
+        gathered enough intel with the other tools. `confidence` is an integer 0-100."""
+        return {"summary": summary, "attack_narrative": attack_narrative,
+                "recommended_action": recommended_action, "confidence": confidence}
+
+    return [enrich_ip, lookup_mitre, check_whois, assess_business_impact,
+            escalate_priority, submit_report]
+
 
 _SYSTEM_PROMPT = """You are a FIFA World Cup 2026 SOC Tier-3 Security Analyst AI agent.
-You have access to tools to investigate security incidents.
-Investigate the incident step-by-step: use tools to gather intel, then produce a final report.
-Be concise and actionable. Address Tier-1 analysts who need clear guidance."""
+Investigate the incident step-by-step using your tools — check IPs, domains, MITRE
+techniques, and business impact before concluding. RAG_CONTEXT below (if present) has
+similar past incidents and ATT&CK guidance retrieved for grounding — use it, but verify
+with tools rather than assuming it's authoritative. When you have enough information,
+call `submit_report` exactly once with your final findings. Be concise and actionable
+for a Tier-1 analyst audience."""
+
+
+def _rag_context_block(inc: dict) -> str:
+    """Retrieve similar past incidents + MITRE technique guidance for grounding."""
+    query_text = (f"{inc.get('asset', '')} {inc.get('campaign_name', '')} "
+                  f"{' '.join(inc.get('tactics', []))} {' '.join(inc.get('techniques', []))}").strip()
+    if not query_text:
+        return ""
+
+    similar_incidents = rag.query_similar(query_text, top_k=2, kind="incident",
+                                           exclude_id=inc.get("incident_id"))
+    technique_docs = rag.query_similar(query_text, top_k=2, kind="technique")
+    if not similar_incidents and not technique_docs:
+        return ""
+
+    lines = ["=== RAG_CONTEXT (retrieved, verify — not ground truth) ==="]
+    for m in similar_incidents:
+        lines.append(f"- Similar past incident {m.get('id')}: asset={m.get('asset')}, "
+                      f"priority={m.get('priority')}, prior_action={m.get('recommended_action', 'N/A')}")
+    for m in technique_docs:
+        lines.append(f"- ATT&CK {m.get('technique')} ({m.get('name')}): tactics={m.get('tactics')}")
+    return "\n".join(lines)
 
 
 def _build_initial_prompt(inc: dict, alerts: list[dict]) -> str:
+    rag_block = _rag_context_block(inc)
     return f"""{_SYSTEM_PROMPT}
 
-{_TOOL_SCHEMA}
+{rag_block}
 
 === INCIDENT {inc['incident_id']} ===
 Priority : {inc.get('priority', 'UNKNOWN')}
@@ -194,120 +225,97 @@ Campaign : {inc.get('campaign_name', 'N/A')}
 Alerts ({len(alerts)} total):
 {json.dumps(alerts[:5], indent=2)[:4000]}
 
-Begin your investigation. Use tools to gather intelligence before writing the final report.
+Begin your investigation.
 """
 
 
-# ---------------------------------------------------------------------------
-# Agentic loop (LangGraph-style state machine, works with or without LG)
-# ---------------------------------------------------------------------------
-
-class _AgentState(TypedDict):
-    messages: list[dict]     # conversation history
-    tool_outputs: list[dict] # accumulated tool results
-    step: int
-    done: bool
-    result: dict
-
-
-_MAX_STEPS = 6  # max tool calls per investigation
+def _parse_tool_content(content) -> dict | None:
+    """submit_report's ToolMessage content may arrive as a JSON string, a
+    str(dict) repr, or an already-parsed dict depending on LangGraph version."""
+    if isinstance(content, dict):
+        return content
+    if not isinstance(content, str):
+        return None
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        pass
+    try:
+        import ast
+        parsed = ast.literal_eval(content)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
 
 
 def _run_agentic_loop(llm, inc_id: str, inc: dict, alerts: list[dict]) -> dict:
-    """
-    Agentic reasoning loop:
-      analyst → tool → observe → analyst → … → done
-    Returns the final structured result dict.
-    """
-    state: _AgentState = {
-        "messages":    [{"role": "user", "content": _build_initial_prompt(inc, alerts)}],
-        "tool_outputs":[],
-        "step":        0,
-        "done":        False,
-        "result":      {},
-    }
+    """Run the LangGraph ReAct agent to investigate an incident."""
+    from langgraph.prebuilt import create_react_agent
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-    while not state["done"] and state["step"] < _MAX_STEPS:
-        state["step"] += 1
+    agent  = create_react_agent(llm, _build_tools())
+    prompt = _build_initial_prompt(inc, alerts)
 
-        # Build context string for LLM
-        context = "\n".join(
-            f"[Step {i+1} Tool Result]: {json.dumps(t)}"
-            for i, t in enumerate(state["tool_outputs"])
+    try:
+        state = agent.invoke(
+            {"messages": [HumanMessage(content=prompt)]},
+            config={"recursion_limit": _MAX_STEPS * 2},
         )
-        conversation = state["messages"].copy()
-        if context:
-            conversation.append({"role": "assistant", "content": context})
+    except Exception as e:
+        logger.error("LangGraph agent run failed for %s: %s", inc_id, e)
+        return {}
 
-        # Call LLM
-        full_prompt = "\n".join(
-            m["content"] for m in conversation
-        )
-        try:
-            response_text = llm.invoke(full_prompt).content.strip()
-        except Exception as e:
-            logger.error("LLM call failed at step %d: %s", state["step"], e)
+    messages        = state.get("messages", [])
+    tool_call_count = sum(1 for m in messages if isinstance(m, ToolMessage))
+
+    report = None
+    for msg in messages:
+        if isinstance(msg, ToolMessage) and msg.name == "submit_report":
+            report = _parse_tool_content(msg.content)
             break
 
-        # Parse response
-        try:
-            # Find JSON block
-            start = response_text.find("{")
-            end   = response_text.rfind("}") + 1
-            if start == -1 or end == 0:
-                logger.warning("Step %d: no JSON found in LLM response", state["step"])
-                break
-            parsed = json.loads(response_text[start:end])
-        except json.JSONDecodeError as e:
-            logger.warning("Step %d: JSON parse error: %s", state["step"], e)
-            break
-
-        # Check if agent is done
-        if parsed.get("done"):
-            state["done"] = True
-            state["result"] = {
-                "summary":           parsed.get("summary", ""),
-                "attack_narrative":  parsed.get("attack_narrative", ""),
-                "recommended_action":parsed.get("recommended_action", ""),
-                "confidence":        parsed.get("confidence", 70),
-                "steps_taken":       state["step"],
-                "tool_calls":        len(state["tool_outputs"]),
-            }
-            logger.info("Agent finished %s in %d steps", inc_id, state["step"])
-            break
-
-        # Execute tool call
-        tool_name = parsed.get("tool")
-        tool_args = parsed.get("args", {})
-        if tool_name and tool_name in _TOOLS:
-            logger.info("Agent calling tool '%s' args=%s", tool_name, tool_args)
-            try:
-                output = _TOOLS[tool_name](**tool_args)
-            except Exception as e:
-                output = {"error": str(e)}
-            state["tool_outputs"].append({
-                "tool": tool_name, "args": tool_args, "result": output})
-            state["messages"].append({
-                "role": "assistant",
-                "content": f"Tool '{tool_name}' result: {json.dumps(output)}"
-            })
-        else:
-            logger.warning("Unknown tool '%s' — skipping", tool_name)
-            break
-
-    # If loop ended without a structured result, use fallback
-    if not state["result"]:
-        tools_used = [t["tool"] for t in state["tool_outputs"]]
-        state["result"] = {
-            "summary":           f"Agent collected intel via {tools_used} but did not produce a final report.",
-            "attack_narrative":  "Multi-step investigation incomplete.",
-            "recommended_action":"Manual Tier-2 review required.",
-            "confidence":        40,
-            "steps_taken":       state["step"],
-            "tool_calls":        len(state["tool_outputs"]),
+    if report:
+        logger.info("Agent finished %s via %d tool calls", inc_id, tool_call_count)
+        return {
+            "summary":            report.get("summary", ""),
+            "attack_narrative":   report.get("attack_narrative", ""),
+            "recommended_action": report.get("recommended_action", ""),
+            "confidence":         report.get("confidence", 70),
+            "steps_taken":        tool_call_count,
+            "tool_calls":         tool_call_count,
         }
 
-    return state["result"]
+    # Agent exhausted its step budget without calling submit_report — fall
+    # back to its last free-text message so something useful still surfaces.
+    last_text = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            last_text = msg.content if isinstance(msg.content, str) else str(msg.content)
+            break
+
+    logger.warning("Agent for %s did not call submit_report — using last message", inc_id)
+    return {
+        "summary":            last_text or f"Investigation incomplete after {tool_call_count} tool calls.",
+        "attack_narrative":   "Multi-step investigation did not conclude with a structured report.",
+        "recommended_action": "Manual Tier-2 review required.",
+        "confidence":         40,
+        "steps_taken":        tool_call_count,
+        "tool_calls":         tool_call_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+# RAG corpus seeding — non-blocking, runs once in the background per process
+# ---------------------------------------------------------------------------
+
+def _background_seed():
+    try:
+        rag.seed_mitre_techniques()
+    except Exception as e:
+        logger.warning("RAG technique-corpus seed failed: %s", e)
+
+
+threading.Thread(target=_background_seed, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +330,7 @@ def _get_llm():
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
             google_api_key=api_key,
             temperature=0.2,
         )
@@ -363,9 +371,9 @@ def _heuristic_summary(inc: dict, alerts: list[dict]) -> dict:
 
 def summarize_incident(inc_id: str) -> dict:
     """
-    Run the agentic investigation loop for an incident.
-    Falls back to heuristic summary if no LLM key is set.
-    Persists result to Redis.
+    Run the agentic investigation for an incident (LangGraph ReAct agent if an
+    LLM key is configured, heuristic otherwise). Persists result to Redis and
+    the RAG corpus.
     """
     raw = r.get(f"incident:{inc_id}")
     if not raw:
@@ -381,21 +389,28 @@ def summarize_incident(inc_id: str) -> dict:
 
     llm = _get_llm()
     if llm:
-        result = _run_agentic_loop(llm, inc_id, inc, alerts)
+        result = _run_agentic_loop(llm, inc_id, inc, alerts) or _heuristic_summary(inc, alerts)
     else:
         logger.info("No LLM key configured — using heuristic summary for %s", inc_id)
         result = _heuristic_summary(inc, alerts)
 
     inc.update(result)
     r.set(f"incident:{inc_id}", json.dumps(inc))
+
+    rag_text = (f"Incident on {inc.get('asset')} ({inc.get('campaign_name', '')}): "
+                f"{result.get('summary', '')} {result.get('attack_narrative', '')}")
+    rag.upsert_incident(inc_id, rag_text, {
+        "asset":              inc.get("asset"),
+        "priority":           inc.get("priority"),
+        "campaign_name":      inc.get("campaign_name"),
+        "recommended_action": result.get("recommended_action"),
+    })
+
     return result
 
 
 def answer_query(incident_id: str, question: str) -> str:
-    """
-    Answer an analyst's ad-hoc question about an incident.
-    Uses the agentic loop if LLM is available.
-    """
+    """Answer an analyst's ad-hoc question about an incident, grounded with RAG context."""
     raw = r.get(f"incident:{incident_id}")
     if not raw:
         return "Incident not found."
@@ -404,14 +419,14 @@ def answer_query(incident_id: str, question: str) -> str:
     llm = _get_llm()
 
     if not llm:
-        # Heuristic answer
         return (f"[Heuristic] Incident {incident_id}: priority={inc.get('priority','?')}, "
                 f"max_risk={inc.get('max_risk',0)}, asset={inc.get('asset','?')}. "
                 f"Configure GEMINI_API_KEY for AI-powered Q&A.")
 
-    # Build a focused Q&A prompt (single turn — no full agentic loop needed)
+    rag_block = _rag_context_block(inc)
     q_prompt = (
         f"You are a FIFA SOC analyst. Answer concisely and factually.\n\n"
+        f"{rag_block}\n\n"
         f"Incident context:\n{json.dumps(inc, indent=2)[:5000]}\n\n"
         f"Question: {question}\n\n"
         f"If the question warrants it, recommend next steps."
