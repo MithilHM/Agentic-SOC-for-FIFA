@@ -2,19 +2,6 @@
 
 An end-to-end AI-Powered Security Operations Center (SOC) platform designed to ingest, normalize, triage, correlate, and investigate security alerts across FIFA's digital ecosystem (ticketing, payments, media portals, mobile apps, streaming services, and admin consoles) during high-profile tournaments.
 
----
-
-## 💡 Recommended GitHub Repository Names
-
-Here are some suggested repository names for this project:
-
-1. **`fifa-ai-siem`** (Clear, direct, and matches the project namespace)
-2. **`agentic-soc-fifa`** (Emphasizes the LangGraph multi-step reasoning capabilities)
-3. **`fifa-cyber-sentinel`** (A strong, brandable security name referencing the base architecture)
-4. **`pitch-defense`** (A thematic, memorable name combining football/soccer and cyber defense)
-
----
-
 ## 🏗️ Architecture & Data Flow
 
 The platform is structured into five core layers:
