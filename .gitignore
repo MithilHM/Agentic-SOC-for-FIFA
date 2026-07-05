@@ -36,6 +36,7 @@ node_modules/
 *.sqlite
 /data/
 intel/data/blocklist_cache.json
+intel/data/rag_seed_checkpoint.json
 
 # Caches & tools
 .pytest_cache/

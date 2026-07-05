@@ -1,6 +1,9 @@
 import { create } from "zustand";
 
 const API = import.meta.env.VITE_API || "http://localhost:8080";
+// Optional API key — sent on the WS handshake as ?token= (browsers can't set
+// WS headers). Empty when the backend runs with auth disabled.
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 
 export const useSoc = create((set, get) => ({
   incidents: [],
@@ -29,8 +32,9 @@ export const useSoc = create((set, get) => ({
     const wsUrl = API.replace(/^http/, "ws");
     let ws;
 
+    const tokenQS = API_KEY ? `?token=${encodeURIComponent(API_KEY)}` : "";
     const open = () => {
-      ws = new WebSocket(`${wsUrl}/api/ws/incidents`);
+      ws = new WebSocket(`${wsUrl}/api/ws/incidents${tokenQS}`);
       ws.onopen    = () => { set({ connected: true }); };
       ws.onmessage = (e) => {
         try {

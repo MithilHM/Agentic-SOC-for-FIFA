@@ -76,13 +76,10 @@ def _tool_enrich_ip(ip: str) -> dict:
 
     country, asn = "Unknown", "Unknown"
     if os.getenv("ENABLE_LIVE_INTEL") == "1":
-        try:
-            import httpx
-            data = httpx.get(f"https://ipapi.co/{ip}/json/", timeout=3).json()
-            country = data.get("country_name", "Unknown")
-            asn     = data.get("org", "Unknown")
-        except Exception as e:
-            logger.debug("Live IP geolocation failed for %s: %s", ip, e)
+        from intel.geoip import geolocate
+        geo = geolocate(ip)   # retry/backoff + fallback provider inside
+        country = geo["country"]
+        asn     = geo.get("org") or "Unknown"
 
         blocklist = ip_reputation(ip)
         if blocklist["reputation_score"] is not None:

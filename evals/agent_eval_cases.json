@@ -1,0 +1,216 @@
+[
+  {
+    "name": "ticket_phishing_killchain",
+    "description": "Multi-stage Fake FIFA Ticket phishing -> WAF block -> brute-forced ticket_ops login. Textbook P1/P2 kill-chain.",
+    "incident": {
+      "incident_id": "EVAL-0001",
+      "created": 0, "last_seen": 0,
+      "asset": "Official Ticket Portal",
+      "priority": "P2",
+      "max_risk": 88,
+      "tactics": ["Initial Access", "Credential Access"],
+      "techniques": ["T1566", "T1110"],
+      "ioc_values": ["fifa-ticket-secure2026.com", "185.174.21.14"],
+      "source_ips": ["185.174.21.14"],
+      "users": ["ticket_ops"],
+      "event_types": ["Phishing", "BruteForce"],
+      "campaign_name": "Fake FIFA Ticket Campaign"
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0001-a1", "timestamp": "2026-07-15T02:11:00Z", "event_source": "DNS",
+       "event_type": "Phishing", "severity": "Medium", "risk_score": 60, "confidence_score": 80,
+       "domain": "fifa-ticket-secure2026.com", "source_ip": "10.0.0.5", "whois_age_days": 2,
+       "mitre_tactic": "Initial Access", "mitre_technique": "T1566",
+       "description": "DNS lookup for newly-registered look-alike domain fifa-ticket-secure2026.com"},
+      {"alert_id": "EVAL-0001-a2", "timestamp": "2026-07-15T02:13:00Z", "event_source": "WAF",
+       "event_type": "WebAttack", "severity": "High", "risk_score": 82, "confidence_score": 90,
+       "source_ip": "185.174.21.14", "country": "Russia", "domain": "fifa-ticket-secure2026.com",
+       "url": "https://fifa-ticket-secure2026.com/login", "threat_intel_score": 95,
+       "mitre_tactic": "Initial Access", "mitre_technique": "T1190",
+       "description": "WAF blocked credential-harvest POST to /login from Russian IP"},
+      {"alert_id": "EVAL-0001-a3", "timestamp": "2026-07-15T02:20:00Z", "event_source": "Auth",
+       "event_type": "BruteForce", "severity": "High", "risk_score": 88, "confidence_score": 88,
+       "source_ip": "185.174.21.14", "country": "Russia", "user": "ticket_ops",
+       "failed_attempts": 41, "mitre_tactic": "Credential Access", "mitre_technique": "T1110",
+       "description": "41 failed logins then success for ticket_ops from 185.174.21.14"}
+    ],
+    "checks": {
+      "min_confidence": 55,
+      "priority_at_least": "P2",
+      "keywords_any": [
+        ["phish", "domain", "ticket", "credential", "brute", "look-alike", "impersonat"],
+        ["block", "isolate", "reset", "escalate", "disable", "revoke", "contain"]
+      ]
+    }
+  },
+  {
+    "name": "payment_gateway_bruteforce",
+    "description": "Off-hours credential stuffing against Payment Gateway from a known-bad Dutch IP.",
+    "incident": {
+      "incident_id": "EVAL-0002",
+      "created": 0, "last_seen": 0,
+      "asset": "Payment Gateway",
+      "priority": "P2",
+      "max_risk": 84,
+      "tactics": ["Credential Access"],
+      "techniques": ["T1110"],
+      "ioc_values": ["45.155.205.99"],
+      "source_ips": ["45.155.205.99"],
+      "users": ["svc_payment"],
+      "event_types": ["BruteForce"],
+      "campaign_name": null
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0002-a1", "timestamp": "2026-07-15T03:40:00Z", "event_source": "Auth",
+       "event_type": "BruteForce", "severity": "High", "risk_score": 84, "confidence_score": 86,
+       "source_ip": "45.155.205.99", "country": "Netherlands", "user": "svc_payment",
+       "failed_attempts": 63, "threat_intel_score": 88,
+       "mitre_tactic": "Credential Access", "mitre_technique": "T1110",
+       "description": "63 failed auth attempts against svc_payment on the Payment Gateway, 03:40 UTC"}
+    ],
+    "checks": {
+      "min_confidence": 55,
+      "priority_at_least": "P2",
+      "keywords_any": [
+        ["brute", "credential", "password", "stuffing", "login"],
+        ["block", "reset", "mfa", "lock", "isolate", "escalate", "rate"]
+      ]
+    }
+  },
+  {
+    "name": "admin_console_takeover",
+    "description": "Successful admin login from a known-bad Belarusian IP after 30 failures, plus EDR tool execution — likely account takeover + lateral movement.",
+    "incident": {
+      "incident_id": "EVAL-0003",
+      "created": 0, "last_seen": 0,
+      "asset": "Admin Console",
+      "priority": "P1",
+      "max_risk": 92,
+      "tactics": ["Credential Access", "Execution"],
+      "techniques": ["T1110", "T1078", "T1204"],
+      "ioc_values": ["193.169.255.10"],
+      "source_ips": ["193.169.255.10"],
+      "users": ["admin"],
+      "event_types": ["BruteForce", "Malware"],
+      "campaign_name": null
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0003-a1", "timestamp": "2026-07-15T01:05:00Z", "event_source": "Auth",
+       "event_type": "BruteForce", "severity": "Critical", "risk_score": 92, "confidence_score": 90,
+       "source_ip": "193.169.255.10", "country": "Belarus", "user": "admin",
+       "failed_attempts": 30, "threat_intel_score": 82,
+       "mitre_tactic": "Credential Access", "mitre_technique": "T1110",
+       "description": "30 failed then successful admin login from 193.169.255.10 (Belarus)"},
+      {"alert_id": "EVAL-0003-a2", "timestamp": "2026-07-15T01:09:00Z", "event_source": "EDR",
+       "event_type": "Malware", "severity": "High", "risk_score": 80, "confidence_score": 84,
+       "source_ip": "193.169.255.10", "user": "admin", "device": "ADMIN-JUMP-01",
+       "mitre_tactic": "Execution", "mitre_technique": "T1204",
+       "description": "Suspicious remote-admin tool executed on ADMIN-JUMP-01 shortly after login"}
+    ],
+    "checks": {
+      "min_confidence": 60,
+      "priority_at_least": "P1",
+      "keywords_any": [
+        ["admin", "takeover", "compromis", "lateral", "account", "credential"],
+        ["isolate", "disable", "reset", "escalate", "contain", "revoke", "quarantine"]
+      ]
+    }
+  },
+  {
+    "name": "benign_internal_login_typo",
+    "description": "Internal employee fat-fingers their password a few times during business hours, then logs in. Benign — the agent should NOT escalate this to a high priority.",
+    "incident": {
+      "incident_id": "EVAL-0004",
+      "created": 0, "last_seen": 0,
+      "asset": "Mobile App API",
+      "priority": "P4",
+      "max_risk": 22,
+      "tactics": ["Credential Access"],
+      "techniques": ["T1110"],
+      "ioc_values": ["10.0.0.44"],
+      "source_ips": ["10.0.0.44"],
+      "users": ["j.smith"],
+      "event_types": ["BruteForce"],
+      "campaign_name": null
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0004-a1", "timestamp": "2026-07-15T14:30:00Z", "event_source": "Auth",
+       "event_type": "BruteForce", "severity": "Low", "risk_score": 22, "confidence_score": 35,
+       "source_ip": "10.0.0.44", "country": "United States", "user": "j.smith",
+       "failed_attempts": 3, "threat_intel_score": 10,
+       "mitre_tactic": "Credential Access", "mitre_technique": "T1110",
+       "description": "3 failed logins then success for j.smith from internal corporate IP 10.0.0.44 at 14:30 UTC"}
+    ],
+    "checks": {
+      "priority_at_most": "P3",
+      "keywords_any": [
+        ["monitor", "review", "benign", "likely", "normal", "routine", "no action", "low", "internal", "no immediate"]
+      ]
+    }
+  },
+  {
+    "name": "streaming_ddos",
+    "description": "Volumetric flood against the Streaming Platform from a wide spread of source IPs — availability impact.",
+    "incident": {
+      "incident_id": "EVAL-0005",
+      "created": 0, "last_seen": 0,
+      "asset": "Streaming Platform",
+      "priority": "P2",
+      "max_risk": 76,
+      "tactics": ["Impact"],
+      "techniques": ["T1498"],
+      "ioc_values": ["203.0.113.7"],
+      "source_ips": ["203.0.113.7", "203.0.113.8", "203.0.113.9"],
+      "users": [],
+      "event_types": ["DDoS"],
+      "campaign_name": null
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0005-a1", "timestamp": "2026-07-15T19:00:00Z", "event_source": "Streaming",
+       "event_type": "DDoS", "severity": "High", "risk_score": 76, "confidence_score": 80,
+       "source_ip": "203.0.113.7", "mitre_tactic": "Impact", "mitre_technique": "T1498",
+       "description": "Volumetric HTTP flood (2.1M req/min) against streaming edge from thousands of IPs"}
+    ],
+    "checks": {
+      "min_confidence": 50,
+      "priority_at_least": "P2",
+      "keywords_any": [
+        ["ddos", "denial", "volumetric", "flood", "traffic", "availab"],
+        ["rate", "block", "mitigat", "scal", "cdn", "escalate", "upstream"]
+      ]
+    }
+  },
+  {
+    "name": "recon_port_scan_low",
+    "description": "External host sweeps ports against the Media Portal. Reconnaissance, low severity — should stay a low-priority watch item, not a P1.",
+    "incident": {
+      "incident_id": "EVAL-0006",
+      "created": 0, "last_seen": 0,
+      "asset": "Media Portal",
+      "priority": "P3",
+      "max_risk": 35,
+      "tactics": ["Reconnaissance"],
+      "techniques": ["T1595"],
+      "ioc_values": ["198.51.100.23"],
+      "source_ips": ["198.51.100.23"],
+      "users": [],
+      "event_types": ["Recon"],
+      "campaign_name": null
+    },
+    "alerts": [
+      {"alert_id": "EVAL-0006-a1", "timestamp": "2026-07-15T11:15:00Z", "event_source": "IDS",
+       "event_type": "Recon", "severity": "Low", "risk_score": 35, "confidence_score": 55,
+       "source_ip": "198.51.100.23", "country": "Unknown", "threat_intel_score": 20,
+       "mitre_tactic": "Reconnaissance", "mitre_technique": "T1595",
+       "description": "TCP SYN sweep across 1000 ports on Media Portal edge from 198.51.100.23"}
+    ],
+    "checks": {
+      "priority_at_most": "P3",
+      "min_confidence": 30,
+      "keywords_any": [
+        ["recon", "scan", "probe", "enumerat", "sweep"],
+        ["monitor", "block", "watch", "review", "investigate", "rate"]
+      ]
+    }
+  }
+]

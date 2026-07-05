@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+import time
 
 import redis
 
@@ -34,6 +35,30 @@ GROUP    = "soc"
 CONSUMER = os.getenv("WORKER_ID", "worker-1")
 STREAM   = "alerts.raw"
 
+# ── Liveness heartbeat ────────────────────────────────────────────────────
+# `beat_ts` is refreshed every consumer-loop cycle (proves the worker loop is
+# alive even when idle); `processed_ts` advances only when an alert is actually
+# handled (proves work progress). /api/health reads this so we report real
+# liveness, not just "the process exists".
+_HEARTBEAT_KEY = "soc:worker:heartbeat"
+_hb = {
+    "worker_id":         CONSUMER,
+    "started_ts":        None,
+    "beat_ts":           None,
+    "processed_ts":      None,
+    "processed_count":   0,
+    "last_alert_id":     None,
+    "last_incident_id":  None,
+}
+
+
+def _write_heartbeat() -> None:
+    _hb["beat_ts"] = time.time()
+    try:
+        r.set(_HEARTBEAT_KEY, json.dumps(_hb))
+    except Exception as e:
+        logger.warning("Failed to write worker heartbeat: %s", e)
+
 
 def _ensure_group():
     try:
@@ -50,6 +75,15 @@ def _is_new_incident(inc_id: str, alert_count: int) -> bool:
 
 def run():
     _ensure_group()
+    # Eagerly warm the IP-reputation feeds so a total outage is logged loudly at
+    # startup instead of silently degrading scoring on the first alert.
+    try:
+        from intel.reputation import warm_blocklists
+        warm_blocklists()
+    except Exception as e:
+        logger.warning("Blocklist warm-up failed: %s", e)
+    _hb["started_ts"] = time.time()
+    _write_heartbeat()
     logger.info("Worker '%s' listening on '%s'…", CONSUMER, STREAM)
 
     while True:
@@ -57,8 +91,12 @@ def run():
             msgs = r.xreadgroup(GROUP, CONSUMER, {STREAM: ">"}, count=10, block=5000)
         except redis.ConnectionError as e:
             logger.error("Redis connection error: %s — retrying in 3s", e)
-            import time; import time as t; t.sleep(3)
+            time.sleep(3)
             continue
+
+        # Beat every cycle (even on an empty read) so liveness is decoupled from
+        # whether alerts are currently flowing.
+        _write_heartbeat()
 
         for _stream, entries in msgs or []:
             for msg_id, fields in entries:
@@ -112,6 +150,13 @@ def _process_one(msg_id: bytes, fields: dict):
 
     # ── 9. Acknowledge message ────────────────────────────────────────────────
     r.xack(STREAM, GROUP, msg_id)
+
+    # ── 10. Record work progress in the heartbeat ─────────────────────────────
+    _hb["processed_ts"]     = time.time()
+    _hb["processed_count"] += 1
+    _hb["last_alert_id"]    = a.alert_id
+    _hb["last_incident_id"] = inc_id
+    _write_heartbeat()
 
 
 if __name__ == "__main__":

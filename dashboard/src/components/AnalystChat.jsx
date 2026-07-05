@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useSoc } from "../store";
 
 const API = import.meta.env.VITE_API || "http://localhost:8080";
+const API_KEY = import.meta.env.VITE_API_KEY || "";
 
 export default function AnalystChat() {
   const { incidents, selected } = useSoc();
@@ -39,7 +40,10 @@ export default function AnalystChat() {
     try {
       const res = await fetch(`${API}/api/incidents/${selected}/ask`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(API_KEY ? { "X-API-Key": API_KEY } : {}),
+        },
         body: JSON.stringify({ question }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -92,6 +92,12 @@ def _download_all() -> dict:
             logger.warning("Failed to fetch blocklist '%s': %s", name, e)
 
     if not cidrs and not ips:
+        # Explicit, visible failure path: every feed failed to download.
+        logger.warning(
+            "All %d IP-reputation feeds failed to download (%s). "
+            "Falling back to on-disk cache / offline heuristics.",
+            len(_SOURCES), ", ".join(_SOURCES),
+        )
         return {}
     return {"cidrs": cidrs, "ips": ips, "fetched_at": time.time()}
 
@@ -110,7 +116,7 @@ def _save_disk_cache(data: dict) -> None:
         with open(_CACHE_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception as e:
-        logger.debug("Could not persist blocklist cache: %s", e)
+        logger.warning("Could not persist blocklist cache (will re-download next refresh): %s", e)
 
 
 def _build_indexes(data: dict) -> tuple[list, set]:
@@ -147,6 +153,36 @@ def _refresh_if_stale() -> None:
         else:
             # Nothing available yet (offline demo mode) — avoid re-hammering every call.
             _state["loaded_at"] = time.time()
+
+
+def warm_blocklists(force: bool = True) -> dict:
+    """
+    Eagerly load the reputation feeds at process startup and log a clear summary
+    of what was (or wasn't) loaded, so a total feed outage is visible in logs
+    rather than only surfacing as silently-degraded scoring later.
+
+    Returns a small status dict for observability/health checks.
+    """
+    if os.getenv("ENABLE_LIVE_INTEL") != "1":
+        logger.info("IP-reputation feeds disabled (ENABLE_LIVE_INTEL != 1) — using offline heuristics.")
+        return {"enabled": False, "sources_loaded": 0, "sources": []}
+
+    if force:
+        with _lock:
+            _state["loaded_at"] = 0.0   # force a re-fetch on the next refresh
+    _refresh_if_stale()
+
+    sources = ({s for _, s in _state["networks"]}
+               | {s for _, s in _state["flat_ips"]})
+    n = len(sources)
+    if n == 0:
+        logger.warning(
+            "Startup: no IP-reputation feeds available (all downloads failed and "
+            "no on-disk cache). IP reputation degraded to offline heuristics.")
+    else:
+        logger.info("Startup: loaded IP-reputation feeds from %d source(s): %s",
+                    n, ", ".join(sorted(sources)))
+    return {"enabled": True, "sources_loaded": n, "sources": sorted(sources)}
 
 
 def ip_reputation(ip: str) -> dict:

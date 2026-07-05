@@ -15,8 +15,7 @@ import difflib
 import logging
 import os
 
-import httpx
-
+from intel.geoip import geolocate
 from intel.mitre import map_to_attack
 from intel.reputation import ip_reputation
 from intel.whois_lookup import lookup_domain_age
@@ -70,11 +69,8 @@ def _geo_and_rep(ip: str) -> tuple[str, int]:
     rep     = 10
 
     if os.getenv("ENABLE_LIVE_INTEL") == "1" and ip:
-        try:
-            g = httpx.get(f"https://ipapi.co/{ip}/json/", timeout=3).json()
-            country = g.get("country_name", "Unknown")
-        except Exception as e:
-            logger.debug("Live IP lookup failed: %s", e)
+        # Retry/backoff + fallback provider live in intel.geoip (no first-429 giveup).
+        country = geolocate(ip)["country"]
 
         blocklist = ip_reputation(ip)
         if blocklist["reputation_score"] is not None:

@@ -10,3 +10,7 @@ down:
 	docker compose down -v
 train:
 	python -m ml.train_model
+test:      ## run the pytest suite in a throwaway container (needs redis up)
+	docker compose run --rm api sh -c "pip install -q -r requirements-dev.txt && python -m pytest tests/ -v"
+eval:      ## run the LangGraph agent eval harness against labeled incidents
+	docker compose run --rm api python -m evals.run_agent_eval

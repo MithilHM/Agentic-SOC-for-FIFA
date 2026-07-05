@@ -15,6 +15,7 @@ is missing/placeholder, so the pipeline keeps degrading gracefully offline.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -34,6 +35,12 @@ _lock     = threading.RLock()  # reentrant: seed_mitre_techniques() holds it whi
 _index    = None
 _embedder = None
 _seeded   = False
+
+# Persisted resume-point for MITRE technique seeding. The free embedding tier
+# rate-limits large batches, so we seed at most `max_items` techniques per run
+# and record how many have been seeded; the next process picks up from here
+# instead of restarting at 0 (or skipping the rest entirely).
+_CHECKPOINT_FILE = os.path.join(os.path.dirname(__file__), "data", "rag_seed_checkpoint.json")
 
 
 def _attr(obj, key, default=None):
@@ -97,9 +104,33 @@ def embed(text: str) -> list[float] | None:
         return None
 
 
+def _load_seed_checkpoint() -> int:
+    """Return how many MITRE techniques have been seeded so far (0 if unknown)."""
+    try:
+        with open(_CHECKPOINT_FILE, encoding="utf-8") as f:
+            return int(json.load(f).get("techniques_seeded", 0))
+    except Exception:
+        return 0
+
+
+def _save_seed_checkpoint(seeded: int, total: int) -> None:
+    try:
+        os.makedirs(os.path.dirname(_CHECKPOINT_FILE), exist_ok=True)
+        with open(_CHECKPOINT_FILE, "w", encoding="utf-8") as f:
+            json.dump({"techniques_seeded": seeded, "total_techniques": total,
+                       "complete": seeded >= total}, f)
+    except Exception as e:
+        logger.warning("Could not persist RAG seed checkpoint (resume will restart): %s", e)
+
+
 def seed_mitre_techniques(max_items: int = 100) -> None:
-    """One-time seed of MITRE technique descriptions, so the analyst can ground
-    remediation advice in real ATT&CK guidance instead of just its own memory."""
+    """Seed MITRE technique descriptions into the RAG index, resuming across runs.
+
+    The free embedding tier rate-limits large batches, so each run seeds at most
+    `max_items` techniques starting from a persisted checkpoint. Successive runs
+    continue past the previous ceiling until the full catalogue is seeded — a
+    checkpoint at 100/697 means the next run seeds 100-200, not 0-100 again.
+    """
     global _seeded
     if _seeded or not _ready():
         return
@@ -108,16 +139,23 @@ def seed_mitre_techniques(max_items: int = 100) -> None:
             return
         try:
             from intel.mitre import load_catalogue
-            index = _get_index()
-            stats = index.describe_index_stats()
-            if (_attr(stats, "total_vector_count", 0) or 0) > 0:
+            all_items = list(load_catalogue().items())
+            total = len(all_items)
+
+            start = _load_seed_checkpoint()
+            if start >= total > 0:
                 _seeded = True
+                logger.info("MITRE RAG corpus already fully seeded (%d/%d)", start, total)
                 return
 
-            items     = list(load_catalogue().items())[:max_items]
-            embedder  = _get_embedder()
+            index      = _get_index()
+            embedder   = _get_embedder()
+            items      = all_items[start:start + max_items]
             chunk_size = 50   # batched via embed_documents -> few API calls, not one per technique
-            seeded_count = 0
+            seeded_count = start
+
+            logger.info("Seeding MITRE techniques %d-%d of %d (resuming from checkpoint %d)",
+                        start, start + len(items), total, start)
 
             for i in range(0, len(items), chunk_size):
                 chunk = items[i:i + chunk_size]
@@ -126,9 +164,12 @@ def seed_mitre_techniques(max_items: int = 100) -> None:
                 try:
                     vectors = embedder.embed_documents(texts)
                 except Exception as e:
-                    logger.warning("Batch embedding failed for techniques %d-%d: %s",
-                                   i, i + len(chunk), e)
-                    continue
+                    # Persist progress so far, then stop this run — the next run
+                    # resumes from the saved checkpoint rather than the start.
+                    logger.warning("Batch embedding failed at techniques %d-%d: %s — "
+                                   "checkpoint saved at %d/%d, will resume next run",
+                                   start + i, start + i + len(chunk), e, seeded_count, total)
+                    break
 
                 index.upsert(vectors=[
                     {"id": f"mitre:{tid}", "values": vec,
@@ -138,10 +179,15 @@ def seed_mitre_techniques(max_items: int = 100) -> None:
                     for (tid, info), vec in zip(chunk, vectors)
                 ])
                 seeded_count += len(chunk)
-                logger.info("RAG seed progress: %d/%d MITRE techniques", seeded_count, len(items))
+                _save_seed_checkpoint(seeded_count, total)
+                logger.info("RAG seed progress: %d/%d MITRE techniques", seeded_count, total)
 
-            _seeded = True
-            logger.info("Seeded Pinecone with %d MITRE technique vectors", seeded_count)
+            if seeded_count >= total:
+                _seeded = True
+                logger.info("Seeded Pinecone with all %d MITRE technique vectors", total)
+            else:
+                logger.info("RAG seed checkpoint at %d/%d — will continue on next run",
+                            seeded_count, total)
         except Exception as e:
             logger.warning("Failed to seed MITRE technique corpus: %s", e)
 

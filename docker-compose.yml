@@ -46,6 +46,10 @@ services:
     restart: on-failure
 
   dashboard:
-    build: ./dashboard
+    build:
+      context: ./dashboard
+      args:
+        VITE_API: ${VITE_API:-http://localhost:8080}
+        VITE_API_KEY: ${VITE_API_KEY:-}
     ports: ["5173:80"]
     depends_on: [api]
