@@ -8,7 +8,6 @@ working for the simulator's fake domains, which don't have real WHOIS records.
 """
 import logging
 import os
-import socket
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -22,31 +21,55 @@ _WHOIS_TIMEOUT_SEC = 5
 
 
 def _live_whois_age_days(domain: str) -> int | None:
-    """Query real WHOIS for a domain's creation date. Returns age in days or None on failure."""
+    """Query real WHOIS for a domain's creation date. Returns age in days or None on failure.
+
+    The python-whois library has no per-call socket timeout parameter; it uses
+    the global socket default.  The OLD approach called socket.setdefaulttimeout()
+    in the main thread, which is a process-wide mutation that races with concurrent
+    Redis/HTTP calls running in other threads.
+
+    Fix: run the blocking whois() call in an isolated thread and join() with a
+    timeout.  The worker thread inherits the (unmodified) default timeout so
+    global state is never mutated in the main thread.
+    """
     try:
         import whois  # python-whois
     except ImportError:
         logger.debug("python-whois not installed — skipping live WHOIS lookup")
         return None
 
-    prev_timeout = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(_WHOIS_TIMEOUT_SEC)
-    try:
-        record = whois.whois(domain)
-        created = record.creation_date
-        if isinstance(created, list):
-            created = created[0] if created else None
-        if not created:
-            return None
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        age_days = (datetime.now(timezone.utc) - created).days
-        return max(age_days, 0)
-    except Exception as e:
-        logger.debug("Live WHOIS lookup failed for %s: %s", domain, e)
+    import threading
+
+    result_box: list[int | None] = [None]
+    error_box:  list[Exception | None] = [None]
+
+    def _query():
+        try:
+            record = whois.whois(domain)
+            created = record.creation_date
+            if isinstance(created, list):
+                created = created[0] if created else None
+            if not created:
+                return
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            age_days = (datetime.now(timezone.utc) - created).days
+            result_box[0] = max(age_days, 0)
+        except Exception as e:
+            error_box[0] = e
+
+    t = threading.Thread(target=_query, daemon=True, name="whois-lookup")
+    t.start()
+    t.join(timeout=_WHOIS_TIMEOUT_SEC)
+
+    if t.is_alive():
+        # Thread still blocked on the socket — treat as timeout.
+        logger.debug("WHOIS lookup timed out for %s after %ss", domain, _WHOIS_TIMEOUT_SEC)
         return None
-    finally:
-        socket.setdefaulttimeout(prev_timeout)
+    if error_box[0] is not None:
+        logger.debug("Live WHOIS lookup failed for %s: %s", domain, error_box[0])
+        return None
+    return result_box[0]
 
 
 def lookup_domain_age(domain: str) -> dict:

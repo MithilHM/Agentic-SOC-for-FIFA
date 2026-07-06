@@ -386,8 +386,11 @@ export default function App() {
   const { currentTab, setTab, startPolling, connect, connected } = useSoc();
 
   useEffect(() => {
-    startPolling(10000);   // initial load + refresh every 10s
-    connect();             // WebSocket live feed
+    const stopPolling = startPolling(10000);  // initial load + refresh every 10s
+    connect();                                 // WebSocket live feed
+    // Return cleanup: clears the interval so React StrictMode double-mount
+    // doesn't leave orphaned polling timers running in the background.
+    return stopPolling;
   }, []);                  // intentionally no deps — run once
 
   return (

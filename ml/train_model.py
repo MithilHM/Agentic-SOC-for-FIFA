@@ -164,9 +164,9 @@ def _sample(label: str, n: int = 100) -> list[dict]:
         for feat, (mu, sigma) in dist.items():
             if feat in ("src_is_known_bad", "off_hours", "is_external"):
                 # Bernoulli feature: mu is probability of being 1
-                row[feat] = float(random.random() < mu)
+                row[feat] = float(_rng.random() < mu)
             else:
-                row[feat] = max(0.0, random.gauss(mu, sigma))
+                row[feat] = max(0.0, _rng.gauss(mu, sigma))
         # Clamp integer-range features
         row["confidence_score"]        = min(100, max(0, round(row["confidence_score"])))
         row["visual_similarity_score"] = min(100, max(0, round(row["visual_similarity_score"])))
@@ -180,7 +180,7 @@ def generate_dataset(n_per_class: int = 300) -> pd.DataFrame:
     rows = []
     for label in ATTACK_TYPES:
         rows.extend(_sample(label, n_per_class))
-    random.shuffle(rows)
+    _rng.shuffle(rows)
     return pd.DataFrame(rows)
 
 

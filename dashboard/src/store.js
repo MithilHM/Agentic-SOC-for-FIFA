@@ -12,6 +12,7 @@ export const useSoc = create((set, get) => ({
   trends: [],       // [{time, Phishing, BruteForce, …}]
   selected: null,
   connected: false,
+  connecting: false,  // guard against duplicate WS handshakes
   currentTab: "Command Center",
 
   setTab(tab) { set({ currentTab: tab }); },
@@ -31,14 +32,19 @@ export const useSoc = create((set, get) => ({
 
   // ── WebSocket live feed ────────────────────────────────────────────────
   connect() {
-    if (get().connected) return;
+    // Guard: do not open a second socket if one is already open OR being opened.
+    // React StrictMode double-mounts components, so without this guard two
+    // concurrent WS handshakes would be initiated on every mount.
+    if (get().connected || get().connecting) return;
+    set({ connecting: true });
+
     const wsUrl = API.replace(/^http/, "ws");
     let ws;
 
     const tokenQS = API_KEY ? `?token=${encodeURIComponent(API_KEY)}` : "";
     const open = () => {
       ws = new WebSocket(`${wsUrl}/api/ws/incidents${tokenQS}`);
-      ws.onopen    = () => { set({ connected: true }); };
+      ws.onopen    = () => { set({ connected: true, connecting: false }); };
       ws.onmessage = (e) => {
         try {
           const inc  = JSON.parse(e.data);
@@ -51,7 +57,7 @@ export const useSoc = create((set, get) => ({
         } catch (_) {}
       };
       ws.onclose = () => {
-        set({ connected: false });
+        set({ connected: false, connecting: false });
         setTimeout(open, 3000);   // auto-reconnect
       };
       ws.onerror = () => ws.close();
@@ -66,6 +72,9 @@ export const useSoc = create((set, get) => ({
   startPolling(intervalMs = 15000) {
     const load = get().load.bind(get());
     load();
-    setInterval(load, intervalMs);
+    // Return a cleanup handle so React's useEffect can cancel the interval
+    // when the component unmounts (important for StrictMode double-mount).
+    const id = setInterval(load, intervalMs);
+    return () => clearInterval(id);
   },
 }));

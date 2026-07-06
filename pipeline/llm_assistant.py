@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 import time
 
 import redis
@@ -302,7 +301,7 @@ def _run_agentic_loop(llm, inc_id: str, inc: dict, alerts: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# RAG corpus seeding — non-blocking, runs once in the background per process
+# RAG corpus seeding — called explicitly by worker.py / server.py lifespan
 # ---------------------------------------------------------------------------
 
 def _background_seed():
@@ -312,7 +311,28 @@ def _background_seed():
         logger.warning("RAG technique-corpus seed failed: %s", e)
 
 
-threading.Thread(target=_background_seed, daemon=True).start()
+_rag_seed_thread = None
+
+
+def initialize_rag() -> None:
+    """Trigger RAG corpus seeding in a background thread.
+
+    Must be called explicitly by the worker or the API lifespan handler
+    instead of firing automatically at import time.  Importing this module
+    (e.g. in a unit test) will no longer spawn a network-bound thread or
+    consume Gemini/Pinecone API quota unexpectedly.
+
+    Idempotent: if a seed thread is already running this is a no-op.
+    """
+    global _rag_seed_thread
+    import threading
+    if _rag_seed_thread is not None and _rag_seed_thread.is_alive():
+        logger.debug("RAG seed thread already running — skipping duplicate start.")
+        return
+    _rag_seed_thread = threading.Thread(target=_background_seed, daemon=True,
+                                         name="rag-seed")
+    _rag_seed_thread.start()
+    logger.info("RAG seed thread started.")
 
 
 # ---------------------------------------------------------------------------
