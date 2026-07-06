@@ -87,11 +87,7 @@ function IncidentQueue({ incidents, selected, onSelect }) {
             </div>
           </div>
         ))}
-        <div style={{ padding: 12, textAlign: "center", borderTop: "1px solid var(--color-border)" }}>
-          <button className="btn btn-secondary" style={{ fontSize: 11, padding: "4px 12px" }}>
-            View All Incidents →
-          </button>
-        </div>
+
       </div>
     </div>
   );
@@ -389,7 +385,6 @@ function ThreatIntelPanel({ inc }) {
       <div style={{ flexShrink: 0, borderBottom: "1px solid var(--color-border)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--color-border)" }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>Threat Intelligence</span>
-          <button className="btn btn-secondary" style={{ fontSize: 10, padding: "3px 10px" }}>View Full Intel →</button>
         </div>
 
         <div style={{ padding: "10px 16px" }}>
@@ -462,9 +457,6 @@ function ThreatIntelPanel({ inc }) {
 
       {/* Action buttons */}
       <div style={{ padding: "10px 16px", borderBottom: "1px solid var(--color-border)", display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
-        <button className="btn btn-danger"   style={{ fontSize: 11 }}>🚫 Block IP</button>
-        <button className="btn btn-secondary" style={{ fontSize: 11 }}>🔒 Isolate Host</button>
-        <button className="btn btn-secondary" style={{ fontSize: 11 }}>🔑 Reset Credentials</button>
         <button className="btn btn-primary"   style={{ fontSize: 11 }} onClick={() => setShowReportModal(true)}>📄 Generate Report</button>
       </div>
 

@@ -140,9 +140,6 @@ function AssetDetail({ nodeId, incidents }) {
         </div>
       </div>
 
-      <button className="btn btn-secondary" style={{ marginTop: 12, width: "100%", justifyContent: "center", fontSize: 12 }}>
-        View Full Details →
-      </button>
     </div>
   );
 }
@@ -260,7 +257,7 @@ function AICopilot({ incidents, metrics, health }) {
 ═══════════════════════════════════════════════════════════════ */
 export default function FIFAOperations() {
   const { incidents, metrics, health, connected } = useNexus();
-  const [selNode, setSelNode] = useState("payment");
+  const [selNode, setSelNode] = useState(null);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", background: "var(--color-bg)", paddingBottom: 40 }}>
@@ -299,19 +296,14 @@ export default function FIFAOperations() {
               <span className="card-title">FIFA Digital Infrastructure</span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: "var(--color-text-4)" }}>Live status of critical digital assets</span>
-                <button className="btn btn-secondary" style={{ fontSize: 10, padding: "3px 10px" }}>View All Assets →</button>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", flex: 1 }}>
-              {/* Digital twin diagram (centered) */}
-              <div style={{ position: "relative", padding: 16, display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1px solid var(--color-border)" }}>
-                <div style={{ width: "100%", height: "100%", maxWidth: 650, maxHeight: 450, position: "relative" }}>
+            <div style={{ display: "flex", flex: 1, padding: 20 }}>
+              {/* Digital twin diagram (centered, full width) */}
+              <div style={{ position: "relative", padding: 16, display: "flex", alignItems: "center", justifyContent: "center", width: "100%", flex: 1 }}>
+                <div style={{ width: "100%", height: "100%", maxWidth: 850, maxHeight: 550, position: "relative" }}>
                   <DigitalTwin selectedNode={selNode} onSelect={setSelNode} />
                 </div>
-              </div>
-              {/* Asset detail */}
-              <div style={{ overflowY: "auto" }}>
-                <AssetDetail nodeId={selNode} incidents={incidents} />
               </div>
             </div>
           </div>
@@ -322,6 +314,35 @@ export default function FIFAOperations() {
           <AICopilot incidents={incidents} metrics={metrics} health={health} />
         </div>
       </div>
+
+      {/* Asset Detail Popup Modal */}
+      {selNode && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 9999
+        }} onClick={() => setSelNode(null)}>
+          <div style={{
+            background: "var(--color-surface)", border: "1px solid var(--color-border)",
+            borderRadius: 12, width: 450, maxWidth: "90%", maxHeight: "90%",
+            display: "flex", flexDirection: "column",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)",
+            animation: "fadeIn 0.2s ease-out"
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 14px 0 0" }}>
+              <button onClick={() => setSelNode(null)} style={{
+                background: "none", border: "none", color: "var(--color-text-3)", fontSize: 24, cursor: "pointer", padding: "0 8px"
+              }}>×</button>
+            </div>
+            <div style={{ overflowY: "auto", paddingBottom: 16 }}>
+              <AssetDetail nodeId={selNode} incidents={incidents} />
+            </div>
+          </div>
+        </div>
+      )}
+
+
     </div>
   );
 }
