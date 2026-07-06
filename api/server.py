@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("RAG initialisation skipped: %s", e)
     yield
-    # Shutdown: nothing extra required — daemon threads die with the process.
+    # Shutdown: nothing extra required - daemon threads die with the process.
 
 
 app = FastAPI(title="FIFA AI-SIEM API", lifespan=lifespan)
@@ -98,7 +98,7 @@ async def incidents():
     Falls back to the legacy SCAN when the sorted set is missing (first boot or
     old worker version).
     """
-    ids = await R.zrange(_OPEN_INCIDENTS_KEY, 0, -1, rev=True)
+    ids = await R.zrevrange(_OPEN_INCIDENTS_KEY, 0, -1)
     if ids:
         pipe = R.pipeline()
         for inc_id in ids:
@@ -144,7 +144,7 @@ async def metrics():
     """Return pre-computed metrics maintained atomically by the pipeline worker.
 
     Reads from a Redis Hash (`soc:metrics`) that the worker increments via
-    HINCRBY on every processed alert — O(1) instead of a full SCAN + parse.
+    HINCRBY on every processed alert - O(1) instead of a full SCAN + parse.
     Falls back to legacy scan when the hash is missing.
     """
     stored = await R.hgetall(_METRICS_KEY)
@@ -214,8 +214,7 @@ async def export_incidents(_principal: dict = Depends(require_auth)):
 async def _close_pubsub(pub, channel: str = "incidents.live") -> None:
     """Fully release a pubsub's dedicated pool connection.
 
-    unsubscribe() alone leaves the pubsub's dedicated connection checked out of
-    the pool forever — aclose() is what actually returns it. Without this, every
+    the pool forever - aclose() is what actually returns it. Without this, every
     WS disconnect/reconnect leaked one connection until the pool (default 100)
     was exhausted and the whole API 500'd. Kept as a named helper so the leak
     regression test can exercise this exact cleanup sequence.

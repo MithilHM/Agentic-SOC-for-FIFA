@@ -16,6 +16,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - REDIS_URL=redis://redis:6379
       - PYTHONUNBUFFERED=1
     restart: on-failure
 
@@ -29,6 +30,7 @@ services:
       worker:
         condition: service_started
     environment:
+      - REDIS_URL=redis://redis:6379
       - SIM_RATE=2.0
       - PYTHONUNBUFFERED=1
     restart: on-failure
@@ -42,6 +44,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - REDIS_URL=redis://redis:6379
       - PYTHONUNBUFFERED=1
     restart: on-failure
 
