@@ -2,6 +2,10 @@
 
 An end-to-end AI-Powered Security Operations Center (SOC) platform designed to ingest, normalize, triage, correlate, and investigate security alerts across FIFA's digital ecosystem (ticketing, payments, media portals, mobile apps, streaming services, and admin consoles) during high-profile tournaments.
 
+> 📚 **Full documentation** lives in [`docs/`](docs/README.md) — architecture,
+> the Redis key schema, per-component guides, the scaling/concurrency design, an
+> API reference, and testing. This README is the quick-start overview.
+
 ##  Architecture & Data Flow
 
 The platform is structured into five core layers:

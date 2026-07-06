@@ -132,18 +132,22 @@ def _find_open_incident(alert: OCSFAlert) -> str | None:
 
 # ── Metrics helpers ──────────────────────────────────────────────────────────
 
-def _update_metrics(inc: dict, alert: OCSFAlert, is_new: bool) -> None:
+def _update_metrics(inc: dict, alert: OCSFAlert, is_new: bool, became_p1: bool) -> None:
     """Atomically update the pre-aggregated metrics hash for /api/metrics.
 
     Using HINCRBY keeps metrics current without requiring any SCAN at query time.
+
+    The `p1` counter is incremented only when an incident *crosses into* P1
+    (became_p1=True).  Priority is monotonic in this engine — both max_risk and
+    the distinct-tactic count only ever grow — so an incident enters P1 at most
+    once and never leaves, meaning a single HINCRBY per transition keeps the
+    counter exact without any re-tally/SCAN.
     """
     pipe = r.pipeline()
     if is_new:
         pipe.hincrby(_METRICS_KEY, "open_incidents", 1)
-    if inc.get("priority") == "P1":
-        # Recalculate P1 count: simple approach — always re-tally from sorted set.
-        # For a high-freq system replace with a separate P1 sorted set.
-        pipe.hset(_METRICS_KEY, "p1", 0)  # reset; worker sets real value below
+    if became_p1:
+        pipe.hincrby(_METRICS_KEY, "p1", 1)
 
     severity = alert.severity or "Info"
     event_type = alert.event_type or "Other"
@@ -213,8 +217,11 @@ def correlate(alert: OCSFAlert) -> tuple[str, bool]:
     if not inc.get("campaign_name") and alert.campaign_name:
         inc["campaign_name"] = alert.campaign_name
 
-    # Recalculate priority
+    # Recalculate priority (capture the prior value so metrics can detect the
+    # one-time P4/P3/P2 → P1 crossing).
+    prev_priority = inc.get("priority", "P4")
     inc["priority"] = _priority(inc["max_risk"], len(inc.get("tactics", [])))
+    became_p1 = inc["priority"] == "P1" and prev_priority != "P1"
 
     # Persist incident
     r.set(_incident_key(inc_id), json.dumps(inc))
@@ -226,7 +233,7 @@ def correlate(alert: OCSFAlert) -> tuple[str, bool]:
     _write_indexes(inc_id, alert.ioc_value, alert.asset, alert.user, alert.source_ip)
 
     # ── Update pre-aggregated metrics hash ────────────────────────────────────
-    _update_metrics(inc, alert, is_new)
+    _update_metrics(inc, alert, is_new, became_p1)
 
     alert.incident_id = inc_id
     return inc_id, is_new
