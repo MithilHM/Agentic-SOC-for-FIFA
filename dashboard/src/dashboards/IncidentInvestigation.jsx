@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNexus } from "../store";
 
 const SEV_BADGE = { Critical: "badge-critical", High: "badge-high", Medium: "badge-medium", Low: "badge-low", Info: "badge-info" };
@@ -36,9 +36,11 @@ function fmtTime(ts) {
 ═══════════════════════════════════════════════════════════════ */
 function IncidentQueue({ incidents, selected, onSelect }) {
   const [search, setSearch] = useState("");
-  const sorted = [...incidents]
-    .filter(i => !search || i.incident_id?.toLowerCase().includes(search.toLowerCase()) || (i.asset || "").toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => ({ P1: 0, P2: 1, P3: 2, P4: 3 }[a.priority] ?? 9) - ({ P1: 0, P2: 1, P3: 2, P4: 3 }[b.priority] ?? 9));
+  const sorted = useMemo(() => {
+    return [...incidents]
+      .filter(i => !search || i.incident_id?.toLowerCase().includes(search.toLowerCase()) || (i.asset || "").toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => ({ P1: 0, P2: 1, P3: 2, P4: 3 }[a.priority] ?? 9) - ({ P1: 0, P2: 1, P3: 2, P4: 3 }[b.priority] ?? 9));
+  }, [incidents, search]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", background: "var(--color-surface)", borderRight: "1px solid var(--color-border)" }}>
@@ -66,7 +68,7 @@ function IncidentQueue({ incidents, selected, onSelect }) {
           >
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
               <span className={`badge ${PRIO_BADGE[inc.priority] || "badge-info"}`}>{inc.priority}</span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: selected === inc.incident_id ? "var(--color-blue-dark)" : "var(--color-text)" }}>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, fontWeight: 600, color: selected === inc.incident_id ? "var(--color-accent-dark)" : "var(--color-text)" }}>
                 {inc.incident_id}
               </span>
               <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--color-text-4)" }}>
@@ -78,11 +80,14 @@ function IncidentQueue({ incidents, selected, onSelect }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 11, color: "var(--color-text-4)" }}>Risk</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: (inc.max_risk || 0) > 70 ? "var(--color-red)" : "var(--color-yellow)" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: (inc.max_risk || 0) > 70 ? "var(--color-red)" : "var(--color-accent)", fontVariantNumeric: "tabular-nums" }}>
                 {inc.max_risk || "—"}/100
               </span>
-              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--color-text-4)" }}>
-                🔔 Alerts {inc.alert_ids?.length || 0}
+              <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--color-text-4)", display: "flex", alignItems: "center", gap: 3 }}>
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M8 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM8 4v4M8 10h.01"/>
+                </svg>
+                {inc.alert_ids?.length || 0}
               </span>
             </div>
           </div>
@@ -104,66 +109,82 @@ function IncidentCenter({ inc }) {
   const [evTab, setEvTab] = useState("IPs");
 
   if (!inc) return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-text-4)", fontSize: 13 }}>
-      Select an incident from the queue to begin investigation
+    <div className="empty-state" style={{ height: "100%" }}>
+      <div className="empty-state-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </div>
+      <div className="empty-state-title">No incident selected</div>
+      <p className="empty-state-sub">Select an incident from the queue on the left to begin your investigation.</p>
     </div>
   );
 
-  let alerts = (inc.alerts || []).slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  if (alerts.length === 0) {
-    const mockCreated = inc.created ? inc.created * 1000 : Date.now() - 3600000;
-    alerts = [
-      {
-        alert_id: "ALT-00101",
-        timestamp: new Date(mockCreated).toISOString(),
-        event_source: "Firewall",
-        severity: "Low",
-        confidence_score: 95,
-        event_type: "Recon",
-        mitre_tactic: "Reconnaissance",
-        mitre_technique: "T1595",
-        description: `External port scan detected targeting FIFA network interfaces from IP ${inc.ioc_values?.[0] || "185.174.21.14"}.`
-      },
-      {
-        alert_id: "ALT-00102",
-        timestamp: new Date(mockCreated + 600000).toISOString(),
-        event_source: "WAF",
-        severity: "High",
-        confidence_score: 88,
-        event_type: "WebAttack",
-        mitre_tactic: "Initial Access",
-        mitre_technique: "T1190",
-        description: `SQL Injection attempt intercepted on /payment/checkout of ${inc.asset || "Payment Gateway"}.`
-      },
-      {
-        alert_id: "ALT-00103",
-        timestamp: new Date(mockCreated + 1200000).toISOString(),
-        event_source: "Auth",
-        severity: "Critical",
-        confidence_score: 96,
-        event_type: "CredentialTheft",
-        mitre_tactic: "Credential Access",
-        mitre_technique: "T1110",
-        description: `Brute-force attack succeeded for user ${inc.users?.[0] || "admin"} on ${inc.asset || "Payment Gateway"}.`
-      },
-      {
-        alert_id: "ALT-00104",
-        timestamp: new Date(mockCreated + 1800000).toISOString(),
-        event_source: "Cloud",
-        severity: "High",
-        confidence_score: 92,
-        event_type: "InsiderThreat",
-        mitre_tactic: "Exfiltration",
-        mitre_technique: "T1041",
-        description: `Suspicious data transfer initiated by ${inc.users?.[0] || "admin"} to external C2 node.`
-      }
-    ].filter(a => {
+  const alerts = useMemo(() => {
+    let list = (inc.alerts || []);
+    if (list.length === 0) {
+      const mockCreated = inc.created ? inc.created * 1000 : Date.now() - 3600000;
+      list = [
+        {
+          alert_id: "ALT-00101",
+          timestamp: new Date(mockCreated).toISOString(),
+          event_source: "Firewall",
+          severity: "Low",
+          confidence_score: 95,
+          event_type: "Recon",
+          mitre_tactic: "Reconnaissance",
+          mitre_technique: "T1595",
+          description: `External port scan detected targeting FIFA network interfaces from IP ${inc.ioc_values?.[0] || "185.174.21.14"}.`
+        },
+        {
+          alert_id: "ALT-00102",
+          timestamp: new Date(mockCreated + 600000).toISOString(),
+          event_source: "WAF",
+          severity: "High",
+          confidence_score: 88,
+          event_type: "WebAttack",
+          mitre_tactic: "Initial Access",
+          mitre_technique: "T1190",
+          description: `SQL Injection attempt intercepted on /payment/checkout of ${inc.asset || "Payment Gateway"}.`
+        },
+        {
+          alert_id: "ALT-00103",
+          timestamp: new Date(mockCreated + 1200000).toISOString(),
+          event_source: "Auth",
+          severity: "Critical",
+          confidence_score: 96,
+          event_type: "CredentialTheft",
+          mitre_tactic: "Credential Access",
+          mitre_technique: "T1110",
+          description: `Brute-force attack succeeded for user ${inc.users?.[0] || "admin"} on ${inc.asset || "Payment Gateway"}.`
+        },
+        {
+          alert_id: "ALT-00104",
+          timestamp: new Date(mockCreated + 1800000).toISOString(),
+          event_source: "Cloud",
+          severity: "High",
+          confidence_score: 92,
+          event_type: "InsiderThreat",
+          mitre_tactic: "Exfiltration",
+          mitre_technique: "T1041",
+          description: `Suspicious data transfer initiated by ${inc.users?.[0] || "admin"} to external C2 node.`
+        }
+      ];
+    }
+
+    // Filter to only show alerts responsible for the threat
+    const filtered = list.filter(a => {
       if (inc.tactics && inc.tactics.length > 0) {
-        return inc.tactics.includes(a.mitre_tactic) || a.severity === "Critical";
+        return inc.tactics.includes(a.mitre_tactic);
       }
-      return true;
+      // If no explicit tactics listed, filter to high severity/confidence threats
+      return a.severity === "Critical" || a.severity === "High" || a.confidence_score >= 85;
     });
-  }
+
+    // Rank alerts descending by confidence score
+    return filtered.sort((a, b) => (b.confidence_score || 0) - (a.confidence_score || 0));
+  }, [inc]);
 
   const evData = {
     IPs:       [...new Set(alerts.map(a => a.source_ip).filter(Boolean))],
@@ -243,16 +264,15 @@ function IncidentCenter({ inc }) {
               {alerts.map((a, idx) => {
                 const dotColor = SEV_DOT_COLOR[a.severity] || "#94a3b8";
                 return (
-                  <div key={a.alert_id || idx} className="anim" style={{ animationDelay: `${idx * 50}ms` }}>
-                    {/* Dot */}
+                  <div key={a.alert_id || idx} className="anim" style={{ animationDelay: `${idx * 50}ms`, position: "relative" }}>
+                    {/* Dot - offset left to align cleanly with timeline spine, using bg border */}
                     <div style={{
                       position: "absolute",
-                      left: 8, top: 10,
-                      width: 16, height: 16,
+                      left: -32, top: 14,
+                      width: 14, height: 14,
                       borderRadius: "50%",
                       background: dotColor,
-                      border: "2px solid #fff",
-                      boxShadow: `0 0 0 2px ${dotColor}55`,
+                      border: "2.5px solid var(--color-bg)",
                     }} />
                     {/* Card */}
                     <div style={{
@@ -269,7 +289,7 @@ function IncidentCenter({ inc }) {
                           <span style={{
                             fontFamily: "var(--font-mono)", fontSize: 10, fontWeight: 600,
                             background: "var(--color-purple-light)", color: "var(--color-purple)",
-                            border: "1px solid #ddd6fe", borderRadius: 4, padding: "1px 6px",
+                            border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: 4, padding: "1px 6px",
                           }}>
                             {a.mitre_technique}
                           </span>
@@ -399,7 +419,18 @@ function ThreatIntelPanel({ inc }) {
             </div>
             <div>
               <div style={{ fontSize: 10, color: "var(--color-text-4)", marginBottom: 4 }}>Country</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)" }}>🇷🇺 {country}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text)", display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="badge badge-info" style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>
+                  {(() => {
+                    const codes = {
+                      "Russia": "RU", "China": "CN", "United States": "US", "North Korea": "KP",
+                      "Brazil": "BR", "Germany": "DE", "Iran": "IR", "Netherlands": "NL", "Unknown": "XX"
+                    };
+                    return codes[country] || "XX";
+                  })()}
+                </span>
+                {country}
+              </div>
             </div>
           </div>
 
@@ -443,18 +474,60 @@ function ThreatIntelPanel({ inc }) {
         </div>
         <div style={{ padding: "10px 16px" }}>
           {[
-            { icon: "⚡", label: "Executive Summary", color: "#3b82f6", text: inc.summary || "A multi-stage attack targeting the payment gateway was detected and successfully contained." },
-            { icon: "📖", label: "Attack Narrative",  color: "#8b5cf6", text: inc.narrative || "The attacker performed reconnaissance, exploited a SQL injection vulnerability, brute-forced admin credentials, escalated privileges, moved laterally and attempted data exfiltration." },
-            { icon: "💼", label: "Business Impact",   color: "#f97316", text: "Potential exposure of payment data and customer PII. Service availability impacted." },
-            { icon: "🔍", label: "Root Cause",        color: "#ef4444", text: inc.root_cause || "SQL injection vulnerability in /payment/checkout endpoint." },
-            { icon: "✅", label: "Recommended Actions", color: "#22c55e", text: inc.recommended_action || "Block malicious IP, patch SQL injection, reset compromised accounts, review access logs." },
+            { 
+              icon: (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+              ), 
+              label: "Executive Summary", color: "#3b82f6", text: inc.summary || "A multi-stage attack targeting the payment gateway was detected and successfully contained." 
+            },
+            { 
+              icon: (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                </svg>
+              ), 
+              label: "Attack Narrative",  color: "#8b5cf6", text: inc.narrative || "The attacker performed reconnaissance, exploited a SQL injection vulnerability, brute-forced admin credentials, escalated privileges, moved laterally and attempted data exfiltration." 
+            },
+            { 
+              icon: (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              ), 
+              label: "Business Impact",   color: "#f97316", text: "Potential exposure of payment data and customer PII. Service availability impacted." 
+            },
+            { 
+              icon: (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              ), 
+              label: "Root Cause",        color: "#ef4444", text: inc.root_cause || "SQL injection vulnerability in /payment/checkout endpoint." 
+            },
+            { 
+              icon: (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ), 
+              label: "Recommended Actions", color: "#22c55e", text: inc.recommended_action || "Block malicious IP, patch SQL injection, reset compromised accounts, review access logs." 
+            },
           ].map(item => (
             <div key={item.label} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
               <div style={{
                 width: 22, height: 22, borderRadius: 6,
                 background: `${item.color}15`, border: `1px solid ${item.color}33`,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, flexShrink: 0, marginTop: 1,
+                color: item.color, flexShrink: 0, marginTop: 1,
               }}>
                 {item.icon}
               </div>
@@ -544,8 +617,12 @@ function ThreatIntelPanel({ inc }) {
             animation: "fadeIn 0.2s ease-out"
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", borderBottom: "1px solid var(--color-border)" }}>
-              <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text)", margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 24 }}>📄</span> Incident Investigation Report
+              <h2 style={{ fontSize: 16, fontWeight: 600, color: "var(--color-text)", margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "var(--color-text-3)" }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                Incident Investigation Report
               </h2>
               <button onClick={() => setShowReportModal(false)} style={{
                 background: "none", border: "none", color: "var(--color-text-3)", fontSize: 24, cursor: "pointer", padding: "0 8px"
@@ -563,13 +640,18 @@ function ThreatIntelPanel({ inc }) {
 
               {/* MITRE Mapping */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--color-purple)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-                  🎯 MITRE ATT&CK Mapping
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--color-purple)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <circle cx="12" cy="12" r="6" />
+                    <circle cx="12" cy="12" r="2" />
+                  </svg>
+                  MITRE ATT&CK Mapping
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
                   {alerts.length > 0 ? (
                     alerts.map((a, i) => (
-                      <div key={i} style={{ background: "rgba(139, 92, 246, 0.08)", border: "1px solid rgba(139, 92, 246, 0.2)", borderRadius: 10, padding: 16 }}>
+                      <div key={i} style={{ background: "rgba(168, 85, 247, 0.05)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: 8, padding: 16 }}>
                         <div style={{ fontSize: 11, color: "var(--color-purple)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>{a.mitre_tactic}</div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)", marginBottom: 8 }}>{a.mitre_technique}</div>
                         <div style={{ fontSize: 12, color: "var(--color-text-3)" }}>Source: {a.event_source} | {a.event_type}</div>
@@ -583,8 +665,12 @@ function ThreatIntelPanel({ inc }) {
 
               {/* Resolution Steps */}
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: "var(--color-green)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-                  ✅ Resolution Playbook
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--color-green)", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  Resolution Playbook
                 </h3>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {[

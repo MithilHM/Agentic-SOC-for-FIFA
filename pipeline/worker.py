@@ -150,6 +150,14 @@ def run():
             logger.error("Redis connection error: %s — retrying in 3s", e)
             time.sleep(3)
             continue
+        except redis.ResponseError as e:
+            logger.warning("Redis response error (e.g. stream/group deleted): %s — recreating group in 3s", e)
+            try:
+                _ensure_group()
+            except Exception as ge:
+                logger.error("Failed to recreate consumer group: %s", ge)
+            time.sleep(3)
+            continue
 
         # Beat every cycle (even on an empty read) so liveness is decoupled from
         # whether alerts are currently flowing.

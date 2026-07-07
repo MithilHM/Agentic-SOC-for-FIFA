@@ -533,29 +533,29 @@ export default function PipelineMonitor() {
 
   const metricCards = [
     {
-      label: "Open Incidents",        icon: "🚨",
+      label: "Open Incidents",
       value: openInc != null ? openInc : "—",
       delta: openInc != null ? "Live from Redis" : "Connecting…",
       up: true, color: "#ef4444",  key: "inc", isLive: openInc != null,
     },
     {
-      label: "P1 Critical Incidents", icon: "🔥",
+      label: "P1 Critical Incidents",
       value: p1Count != null ? p1Count : "—",
       delta: p1Count != null ? "Live from Redis" : "Connecting…",
       up: false, color: "#f97316", key: "p1",  isLive: p1Count != null,
     },
     {
-      label: "Alerts Ingested / sec", icon: "📥",
+      label: "Alerts Ingested / sec",
       value: sim.ingested,
       delta: "~est. (no rate API)", up: true, color: "#3b82f6", key: "ing", isLive: false,
     },
     {
-      label: "Pipeline Latency",      icon: "⏱",
+      label: "Pipeline Latency",
       value: `${sim.latency} ms`,
       delta: "~est. (no rate API)", up: true, color: "#f59e0b", key: "lat", isLive: false,
     },
     {
-      label: "MITRE RAG Engine",      icon: "✦",
+      label: "MITRE RAG Engine",
       value: "Active",
       delta: connected ? "All systems operational" : "Offline",
       up: connected, color: "#8b5cf6", isText: true, key: "rag", isLive: connected,
@@ -733,199 +733,175 @@ export default function PipelineMonitor() {
               }
             `}</style>
 
-            {/* Connecting Flow Line with text labels */}
-            <div style={{
-              position: "relative",
-              height: 48,
-              width: "100%",
-              marginBottom: 10,
-              zIndex: 1,
-            }}>
-              {[
-                { text: "JSON",  left: "20%", delay: "0s",  color: "#3b82f6" },
-                { text: "Syslog",left: "35%", delay: "0.4s",color: "#ef4444" },
-                { text: "CEF",   left: "50%", delay: "0.8s",color: "#10b981" },
-                { text: "CSV",   left: "65%", delay: "0.2s",color: "#f59e0b" },
-                { text: "Netflow",left:"80%", delay: "0.6s",color: "#8b5cf6" },
-              ].map((item, idx) => (
-                <div key={idx} style={{
-                  position: "absolute",
-                  left: item.left,
-                  fontSize: 9,
-                  fontWeight: 700,
-                  fontFamily: "var(--font-mono)",
-                  background: `${item.color}15`,
-                  color: item.color,
-                  border: `1px solid ${item.color}44`,
-                  borderRadius: 4,
-                  padding: "1px 6px",
-                  boxShadow: `0 2px 4px ${item.color}11`,
-                  animation: "flowText 2s linear infinite",
-                  animationDelay: item.delay,
-                }} >
-                  {item.text}
+          {/* Pipeline diagram based on custom architectural spec */}
+          <div style={{ padding: "16px", width: "100%", display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* 1. FIFA digital infrastructure & log sources */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">FIFA digital infrastructure & log sources</div>
+              <div style={{ display: "flex", gap: 16, width: "100%" }}>
+                <div className="cyber-flow-box" style={{ flex: 1 }} onClick={() => setActiveStage("ocsf")}>
+                  <div className="cyber-flow-box-title">External services</div>
+                  <div className="cyber-flow-box-sub">Website, ticketing, payments</div>
                 </div>
-              ))}
+                <div className="cyber-flow-box" style={{ flex: 1 }} onClick={() => setActiveStage("ocsf")}>
+                  <div className="cyber-flow-box-title">Security log sources</div>
+                  <div className="cyber-flow-box-sub">Firewall, WAF, EDR, IAM, SIEM</div>
+                </div>
+              </div>
+              <div className="cyber-flow-subtext">Millions of users generate thousands of alerts every hour</div>
             </div>
 
-            {/* Downward Arrow connecting Log flow into vertical pipeline */}
-            <div style={{
-              width: 2,
-              height: 16,
-              background: "#93c5fd",
-              margin: "0 auto 10px",
-              position: "relative",
-              zIndex: 1,
-            }}>
-              <div style={{
-                position: "absolute",
-                bottom: -4,
-                left: "50%",
-                marginLeft: -4,
-                width: 0, height: 0,
-                borderLeft: "4px solid transparent",
-                borderRight: "4px solid transparent",
-                borderTop: "5px solid #93c5fd",
-              }} />
+            <div className="cyber-flow-arrow-down">↓</div>
+
+            {/* 2. Ingestion & normalization */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">Ingestion & normalization</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", justifyContent: "space-between" }}>
+                <div className={`cyber-flow-box ${highlightId === "ocsf" ? "active" : ""}`} style={{ flex: 1 }} onClick={() => setActiveStage("ocsf")}>
+                  <div className="cyber-flow-box-title">Log collectors</div>
+                  <div className="cyber-flow-box-sub">Connectors & agents</div>
+                </div>
+                <div style={{ color: "var(--color-border-2)" }}>→</div>
+                <div className={`cyber-flow-box ${highlightId === "redis" ? "active" : ""}`} style={{ flex: 1 }} onClick={() => setActiveStage("redis")}>
+                  <div className="cyber-flow-box-title">Kafka event bus</div>
+                  <div className="cyber-flow-box-sub">Streaming pipeline</div>
+                </div>
+                <div style={{ color: "var(--color-border-2)" }}>→</div>
+                <div className={`cyber-flow-box ${highlightId === "ocsf" ? "active" : ""}`} style={{ flex: 1 }} onClick={() => setActiveStage("ocsf")}>
+                  <div className="cyber-flow-box-title">Normalize to OCSF</div>
+                  <div className="cyber-flow-box-sub">Unified schema</div>
+                </div>
+              </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0, width: "100%", maxWidth: 760 }}>
-              {STAGES.map((stage, idx) => {
-                const isActive   = highlightId === stage.id;
-                const isDimmed   = inWalk && !isActive;
-                const stageRate  = idx === 1 ? sim.queueLen.toLocaleString() : rand(stage.rateBase, 0.06);
-                const stageLat   = idx === 1 ? "18 ms" : idx === 3 ? "420 ms" : idx === 6 ? "1.2 s" : `${rand(stage.latBase, 0.1)} ms`;
-                return (
-                  <div key={stage.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "100%" }}>
-                    
-                    {/* Row with Stage Card + Inner Workings */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%", justifyContent: "center" }}>
-                      
-                      {/* Left: Stage Card */}
-                      <div
-                        className={`pipeline-stage ${isActive ? "active" : ""} ${isDimmed ? "dimmed" : ""}`}
-                        onClick={() => setActiveStage(stage.id)}
-                        style={{
-                          width: "240px",
-                          borderColor: isActive ? stage.color : "var(--color-border)",
-                          background: "var(--color-surface)",
-                          border: "1.5px solid var(--color-border)",
-                          borderRadius: "10px",
-                          padding: "10px 14px",
-                          cursor: "pointer",
-                          transition: "all 0.3s ease",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          zIndex: isActive ? 45 : 2,
-                          position: "relative",
-                          animation: isActive ? "activeStagePulse 1.5s infinite alternate" : "none",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {/* Icon/Initials */}
-                        <div style={{
-                          width: 32, height: 32, borderRadius: 8,
-                          background: isActive ? stage.bgColor : "#f8fafc",
-                          border: `1.5px solid ${isActive ? stage.color : "var(--color-border)"}`,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 9, fontWeight: 800, color: isActive ? stage.color : "var(--color-text-4)",
-                          flexShrink: 0,
-                        }}>
-                          {stage.id === "ocsf" ? "IN"
-                           : stage.id === "redis" ? "QUE"
-                           : stage.id === "xgboost" ? "ML"
-                           : stage.id === "enrichment" ? "INT"
-                           : stage.id === "correlation" ? "COR"
-                           : stage.id === "gemini" ? "AI"
-                           : "OUT"}
-                        </div>
-                        
-                        {/* Middle: Info */}
-                        <div style={{ flex: 1, textAlign: "left" }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: isActive ? stage.color : "var(--color-text-2)", lineHeight: 1.2 }}>
-                            {stage.label.replace("\n", " ")}
-                          </div>
-                          <div style={{ fontSize: 9, color: "var(--color-text-4)", marginTop: 2 }}>
-                            Latency: {stageLat}
-                          </div>
-                        </div>
+            <div className="cyber-flow-arrow-down">↓</div>
 
-                        {/* Right: Rate */}
-                        <div style={{ textAlign: "right", flexShrink: 0 }}>
-                          <div style={{ fontSize: 10, color: "var(--color-text-3)", fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                            {stageRate}
-                          </div>
-                          <div style={{ fontSize: 8, color: "var(--color-text-4)", marginTop: 1 }}>
-                            {idx === 1 ? "pending" : "events/s"}
-                          </div>
-                        </div>
-                      </div>
+            {/* 3. Agentic AI processing pipeline */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">Agentic AI processing pipeline</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, width: "100%" }}>
+                <div className={`cyber-flow-box ${highlightId === "xgboost" ? "active" : ""}`} onClick={() => setActiveStage("xgboost")}>
+                  <div className="cyber-flow-box-title">Feature extract</div>
+                  <div className="cyber-flow-box-sub">Entity & behavior</div>
+                </div>
+                <div className={`cyber-flow-box ${highlightId === "xgboost" ? "active" : ""}`} onClick={() => setActiveStage("xgboost")}>
+                  <div className="cyber-flow-box-title">Threat classify</div>
+                  <div className="cyber-flow-box-sub">Phishing, malware+</div>
+                </div>
+                <div className={`cyber-flow-box ${highlightId === "xgboost" ? "active" : ""}`} onClick={() => setActiveStage("xgboost")}>
+                  <div className="cyber-flow-box-title">FP reduction</div>
+                  <div className="cyber-flow-box-sub">Confidence scoring</div>
+                </div>
+                <div className={`cyber-flow-box ${highlightId === "enrichment" ? "active" : ""}`} onClick={() => setActiveStage("enrichment")}>
+                  <div className="cyber-flow-box-title">Intel enrichment</div>
+                  <div className="cyber-flow-box-sub">VirusTotal, CVE+</div>
+                </div>
+                <div className={`cyber-flow-box ${highlightId === "enrichment" ? "active" : ""}`} onClick={() => setActiveStage("enrichment")}>
+                  <div className="cyber-flow-box-title">MITRE mapping</div>
+                  <div className="cyber-flow-box-sub">Tactics & techniques</div>
+                </div>
+                <div className={`cyber-flow-box ${highlightId === "correlation" ? "active" : ""}`} onClick={() => setActiveStage("correlation")}>
+                  <div className="cyber-flow-box-title">Risk scoring</div>
+                  <div className="cyber-flow-box-sub">Severity x impact</div>
+                </div>
+              </div>
+            </div>
 
-                      {/* Connector Arrow */}
-                      <span style={{ fontSize: 16, color: isActive ? stage.color : "var(--color-text-4)", fontWeight: 600 }}>→</span>
+            <div className="cyber-flow-arrow-down">↓</div>
 
-                      {/* Right: Inner Workings Diagram */}
-                      <div style={{ width: "420px", flexShrink: 0, opacity: isDimmed ? 0.3 : 1, transition: "opacity 0.3s" }}>
-                        <InnerWorkingsDiagram stageId={stage.id} />
-                      </div>
-
+            {/* 4. Incident correlation engine */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">Incident correlation engine</div>
+              <div style={{ display: "flex", gap: 24, width: "100%", alignItems: "center" }}>
+                
+                {/* Left column of alert types */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                  {["Firewall alert", "Failed login", "Email alert", "Malware alert"].map((t) => (
+                    <div key={t} className="cyber-flow-box" style={{ padding: "6px 12px", borderLeft: "3px solid var(--color-red)" }} onClick={() => setActiveStage("correlation")}>
+                      <div className="cyber-flow-box-title" style={{ fontSize: 10 }}>{t}</div>
                     </div>
-
-                    {/* Vertical Connector Line (offset to align with center of Left Stage Card) */}
-                    {idx < STAGES.length - 1 && (
-                      <div style={{
-                        position: "relative",
-                        height: 32,
-                        width: 2,
-                        background: "linear-gradient(180deg, #bfdbfe, #93c5fd, #bfdbfe)",
-                        zIndex: isActive ? 42 : 1,
-                        margin: "-2px 0",
-                        transform: "translateX(-226px)", // shifts left directly below the 240px card
-                      }}>
-                        <div style={{
-                          position: "absolute",
-                          width: 6, height: 6,
-                          borderRadius: "50%",
-                          background: isActive ? stage.color : "var(--color-blue)",
-                          left: "50%",
-                          marginLeft: -3,
-                          boxShadow: `0 0 6px ${isActive ? stage.color : "var(--color-blue)"}`,
-                          animation: "verticalFlowDot 1.4s linear infinite",
-                          animationDelay: `${idx * 200}ms`,
-                        }} />
-                        {/* Downward Arrowhead */}
-                        <div style={{
-                          position: "absolute",
-                          bottom: -4,
-                          left: "50%",
-                          marginLeft: -4,
-                          width: 0,
-                          height: 0,
-                          borderLeft: "4px solid transparent",
-                          borderRight: "4px solid transparent",
-                          borderTop: `5px solid ${isActive ? stage.color : "#93c5fd"}`,
-                        }} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Legend */}
-            <div style={{ display: "flex", gap: 16, marginTop: 20, justifyContent: "center" }}>
-              {[
-                { dot: "var(--color-blue)",   label: "Data Flow" },
-                { dot: "var(--color-blue-dark)", label: "Active Stage" },
-                { dot: "var(--color-green)",  label: "Completed" },
-              ].map(l => (
-                <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: l.dot, display: "inline-block" }} />
-                  <span style={{ fontSize: 10, color: "var(--color-text-3)" }}>{l.label}</span>
+                  ))}
                 </div>
-              ))}
+
+                {/* Connecting lines indicator */}
+                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <svg width="40" height="110" viewBox="0 0 40 110" fill="none" stroke="var(--color-border-2)" strokeWidth="1.5">
+                    <path d="M0 15 C 20 15, 20 55, 40 55" />
+                    <path d="M0 43 C 20 43, 20 55, 40 55" />
+                    <path d="M0 70 C 20 70, 20 55, 40 55" />
+                    <path d="M0 98 C 20 98, 20 55, 40 55" />
+                    <polygon points="36,52 40,55 36,58" fill="var(--color-border-2)" />
+                  </svg>
+                </div>
+
+                {/* Merged incident container */}
+                <div className={`cyber-flow-box ${highlightId === "correlation" ? "active" : ""}`} style={{ flex: 1.2, padding: "20px 16px", border: "1px solid var(--color-green)", background: "rgba(16, 185, 129, 0.05)" }} onClick={() => setActiveStage("correlation")}>
+                  <div className="cyber-flow-box-title" style={{ color: "var(--color-green)", fontSize: 12 }}>Single security incident</div>
+                  <div className="cyber-flow-box-sub" style={{ color: "var(--color-text-3)", marginTop: 6 }}>Merged: IP, user, time</div>
+                </div>
+
+              </div>
             </div>
+
+            <div className="cyber-flow-arrow-down">↓</div>
+
+            {/* 5. Agentic AI security copilot */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">Agentic AI security copilot</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
+                {[
+                  { k: "Perceive", s: "Gather intel" },
+                  { k: "Reason", s: "Infer intent" },
+                  { k: "Plan", s: "Set strategy" },
+                  { k: "Act", s: "Take action" },
+                  { k: "Learn", s: "Refine model" }
+                ].map((item, idx) => (
+                  <div key={item.k} style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                    <div className={`cyber-flow-box ${highlightId === "gemini" ? "active" : ""}`} style={{ padding: "8px 6px", flex: 1, minWidth: 60 }} onClick={() => setActiveStage("gemini")}>
+                      <div className="cyber-flow-box-title" style={{ fontSize: 10 }}>{item.k}</div>
+                      <div className="cyber-flow-box-sub" style={{ fontSize: 8 }}>{item.s}</div>
+                    </div>
+                    {idx < 4 && <span style={{ color: "var(--color-text-4)" }}>→</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="cyber-flow-subtext">learns continuously from analyst feedback and outcomes</div>
+            </div>
+
+            <div className="cyber-flow-arrow-down">↓</div>
+
+            {/* 6. SOC dashboards */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">SOC dashboards</div>
+              <div style={{ display: "flex", gap: 12, width: "100%" }}>
+                <div className={`cyber-flow-box ${highlightId === "dashboard" ? "active" : ""}`} style={{ flex: 1 }} onClick={() => setActiveStage("dashboard")}>
+                  <div className="cyber-flow-box-title">Analyst dashboard</div>
+                  <div className="cyber-flow-box-sub">Live alerts & IOCs</div>
+                </div>
+                <div className="cyber-flow-box" style={{ flex: 1 }} onClick={() => setActiveStage("dashboard")}>
+                  <div className="cyber-flow-box-title">Manager dashboard</div>
+                  <div className="cyber-flow-box-sub">MTTR, MTTD, workload</div>
+                </div>
+                <div className="cyber-flow-box" style={{ flex: 1 }} onClick={() => setActiveStage("dashboard")}>
+                  <div className="cyber-flow-box-title">Executive view</div>
+                  <div className="cyber-flow-box-sub">Business risk score</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="cyber-flow-arrow-down">↓</div>
+
+            {/* 7. Automated response (human-approved) */}
+            <div className="cyber-flow-group">
+              <div className="cyber-flow-title">Automated response (human-approved)</div>
+              <div className="cyber-flow-box" style={{ width: "100%", padding: "16px 20px" }} onClick={() => setActiveStage("correlation")}>
+                <div className="cyber-flow-box-title" style={{ color: "var(--color-accent)", fontSize: 12 }}>SOAR, ticketing, Slack, endpoint & firewall blocking</div>
+              </div>
+              <div className="cyber-flow-subtext" style={{ marginTop: 0 }}>Feedback loop: analyst input continuously refines the AI pipeline and copilot</div>
+            </div>
+
+          </div>
           </div>
         </div>
 
@@ -960,19 +936,19 @@ export default function PipelineMonitor() {
             </div>
             
             <div style={{ padding: "18px" }}>
-              {/* Stage header */}
+              {/* Stage header - Dark Zinc Theme compatible for high contrast */}
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "10px 12px",
-                background: selStage?.bgColor,
-                border: `1px solid ${selStage?.color}33`,
+                background: "var(--color-surface-3)",
+                border: `1px solid var(--color-border)`,
                 borderRadius: 8, marginBottom: 14,
               }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: selStage?.color }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: selStage?.color || "var(--color-text)" }}>
                     {selStage?.label.replace("\n", " ")}
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--color-text-3)", marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: "var(--color-text-4)", marginTop: 2 }}>
                     {selStage?.id === "xgboost" ? "Machine Learning Classification"
                     : selStage?.id === "redis"  ? "Event Bus / Stream"
                     : selStage?.id === "ocsf"   ? "Schema Normalization"

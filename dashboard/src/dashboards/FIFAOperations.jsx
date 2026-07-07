@@ -1,17 +1,79 @@
 import { useState, useEffect, useRef } from "react";
 import { useNexus } from "../store";
 
+/* ── SVG icon components for infrastructure nodes ── */
+function NodeIcon({ id, color = "currentColor" }) {
+  const s = { width: 18, height: 18, display: "block" };
+  if (id === "ticket") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 9a2 2 0 0 0 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a2 2 0 0 0 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/>
+      <line x1="9" y1="12" x2="15" y2="12"/>
+    </svg>
+  );
+  if (id === "auth") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L3 6.5V12c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V6.5L12 2z"/>
+      <path d="M9 12l2 2 4-4"/>
+    </svg>
+  );
+  if (id === "payment") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="4" width="22" height="16" rx="2"/>
+      <line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  );
+  if (id === "streaming") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3"/>
+    </svg>
+  );
+  if (id === "media") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="2"/>
+      <path d="M12 2a10 10 0 0 1 0 20"/>
+      <path d="M12 2a10 10 0 0 0 0 20"/>
+      <line x1="2" y1="12" x2="22" y2="12"/>
+    </svg>
+  );
+  if (id === "cloud") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+    </svg>
+  );
+  if (id === "wifi") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+      <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+      <line x1="12" y1="20" x2="12.01" y2="20"/>
+    </svg>
+  );
+  if (id === "admin") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+  );
+  if (id === "identity") return (
+    <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+    </svg>
+  );
+  return null;
+}
+
 /* ── FIFA infrastructure nodes (base template — status computed from live incidents) ── */
 const NODE_TEMPLATES = [
-  { id: "ticket",    label: "Official Ticket Portal",  icon: "🎫", x: 16, y: 30, keywords: ["ticket", "ticketing"] },
-  { id: "auth",      label: "Authentication Server",   icon: "🔐", x: 50, y: 12, keywords: ["auth", "identity", "login", "credential"] },
-  { id: "payment",   label: "Payment Gateway",         icon: "💳", x: 50, y: 50, keywords: ["payment", "gateway", "checkout", "financial"] },
-  { id: "streaming", label: "Streaming Platform",      icon: "▶️",  x: 84, y: 30, keywords: ["stream", "media", "broadcast", "video"] },
-  { id: "media",     label: "Media Portal",            icon: "📡", x: 16, y: 62, keywords: ["portal", "cms", "content"] },
-  { id: "cloud",     label: "Cloud Infrastructure",    icon: "☁️",  x: 84, y: 62, keywords: ["cloud", "infra", "server", "host"] },
-  { id: "wifi",      label: "Stadium WiFi",            icon: "📶", x: 16, y: 86, keywords: ["wifi", "stadium", "network", "wireless"] },
-  { id: "admin",     label: "Admin Console",           icon: "⚙️",  x: 50, y: 82, keywords: ["admin", "console", "manage"] },
-  { id: "identity",  label: "Identity Server",         icon: "🔑", x: 84, y: 86, keywords: ["identity", "sso", "ldap", "active directory"] },
+  { id: "ticket",    label: "Official Ticket Portal",  x: 16, y: 30, keywords: ["ticket", "ticketing"] },
+  { id: "auth",      label: "Authentication Server",   x: 50, y: 12, keywords: ["auth", "identity", "login", "credential"] },
+  { id: "payment",   label: "Payment Gateway",         x: 50, y: 50, keywords: ["payment", "gateway", "checkout", "financial"] },
+  { id: "streaming", label: "Streaming Platform",      x: 84, y: 30, keywords: ["stream", "media", "broadcast", "video"] },
+  { id: "media",     label: "Media Portal",            x: 16, y: 62, keywords: ["portal", "cms", "content"] },
+  { id: "cloud",     label: "Cloud Infrastructure",    x: 84, y: 62, keywords: ["cloud", "infra", "server", "host"] },
+  { id: "wifi",      label: "Stadium WiFi",            x: 16, y: 86, keywords: ["wifi", "stadium", "network", "wireless"] },
+  { id: "admin",     label: "Admin Console",           x: 50, y: 82, keywords: ["admin", "console", "manage"] },
+  { id: "identity",  label: "Identity Server",         x: 84, y: 86, keywords: ["identity", "sso", "ldap", "active directory"] },
 ];
 
 /** Map incidents → node statuses.
@@ -39,8 +101,8 @@ function computeNodes(incidents) {
       risk = top.max_risk || null;
     }
 
-    // Uptime: degrade slightly when critical/warning
-    const uptimeMap = { ok: "99.9%", warning: "94.2%", critical: "87.1%" };
+    // Uptime: degrade slightly when critical/warning (organic numbers)
+    const uptimeMap = { ok: "99.87%", warning: "93.4%", critical: "86.7%" };
     return { ...tmpl, status, risk, uptime: uptimeMap[status] };
   });
 }
@@ -54,7 +116,7 @@ const EDGES = [
   ["cloud","identity"],
 ];
 
-const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
+const STATUS_COLOR = { ok: "#059669", warning: "#d97706", critical: "#dc2626" };
 const STATUS_LABEL = { ok: "Healthy", warning: "Warning", critical: "Critical" };
 
 function DigitalTwin({ nodes, selectedNode, onSelect }) {
@@ -80,7 +142,6 @@ function DigitalTwin({ nodes, selectedNode, onSelect }) {
         })}
       </svg>
 
-      {/* Nodes */}
       {nodes.map(node => {
         const isSelected = selectedNode === node.id;
         const c = STATUS_COLOR[node.status];
@@ -88,7 +149,7 @@ function DigitalTwin({ nodes, selectedNode, onSelect }) {
           <div
             key={node.id}
             className="dt-node"
-            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+            style={{ left: `${node.x}%`, top: `${node.y}%`, zIndex: 1 }}
             onClick={() => onSelect(isSelected ? null : node.id)}
           >
             {/* Beacon for critical */}
@@ -96,18 +157,26 @@ function DigitalTwin({ nodes, selectedNode, onSelect }) {
               <div className="beacon" style={{ color: c, inset: -14, width: "calc(100% + 28px)", height: "calc(100% + 28px)" }} />
             )}
             <div className={`dt-node-box ${node.status} ${isSelected ? "selected" : ""}`}>
-              <span style={{ fontSize: 18 }}>{node.icon}</span>
+              <div style={{
+                width: 28, height: 28, borderRadius: 7,
+                background: node.status === "critical" ? "#fef2f2" : node.status === "warning" ? "#fef3c7" : "var(--color-surface-2)",
+                border: `1.5px solid ${c}44`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: c,
+              }}>
+                <NodeIcon id={node.id} color={c} />
+              </div>
               <span style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-2)", textAlign: "center", lineHeight: 1.3, whiteSpace: "nowrap" }}>
                 {node.label}
               </span>
-              <span style={{ fontSize: 10, color: STATUS_COLOR[node.status], fontWeight: 500 }}>
+              <span style={{ fontSize: 10, color: c, fontWeight: 600 }}>
                 {STATUS_LABEL[node.status]}
               </span>
               {node.uptime && (
-                <span style={{ fontSize: 9, color: "var(--color-text-4)" }}>{node.uptime}</span>
+                <span style={{ fontSize: 9, color: "var(--color-text-4)", fontVariantNumeric: "tabular-nums" }}>{node.uptime}</span>
               )}
               {node.risk && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: "var(--color-red)" }}>Risk {node.risk}/100</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "var(--color-red)", fontVariantNumeric: "tabular-nums" }}>Risk {node.risk}/100</span>
               )}
             </div>
           </div>
@@ -201,7 +270,7 @@ function AssetDetail({ nodeId, nodes, incidents }) {
 /* ── RAG Copilot chat ── */
 function AICopilot({ incidents, metrics, health }) {
   const { ask } = useNexus();
-  const [msgs, setMsgs]   = useState([{ r: "sys", t: "NEXUS MITRE RAG Copilot online. Ask about FIFA security posture or request an executive briefing." }]);
+  const [msgs, setMsgs]   = useState([{ r: "sys", t: "MITRE RAG Copilot ready. Ask about current threats, attack paths, or request an executive briefing." }]);
   const [input, setInput] = useState("");
   const [busy, setBusy]   = useState(false);
   const endRef = useRef(null);
@@ -242,16 +311,18 @@ function AICopilot({ incidents, metrics, health }) {
       {/* Header */}
       <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <div style={{ width: 22, height: 22, borderRadius: 6, background: "linear-gradient(135deg, #8b5cf6, #3b82f6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 11, color: "#fff" }}>✦</span>
+          <div className="copilot-icon">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+              <path d="M8 2l1.5 3 3.5.5-2.5 2.4.6 3.6L8 10l-3.1 1.5.6-3.6L3 5.5 6.5 5 8 2z" fill="white"/>
+            </svg>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>RAG Copilot</span>
-          <span style={{ fontSize: 10, color: "var(--color-text-4)", marginLeft: 2 }}>Powered by MITRE RAG</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>MITRE Copilot</span>
+          <span style={{ fontSize: 10, color: "var(--color-text-4)", marginLeft: 2 }}>ATT&CK RAG</span>
         </div>
         {/* Prefilled Q example */}
-        <div style={{ background: "var(--color-blue-light)", border: "1px solid var(--color-blue-mid)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "var(--color-text-2)" }}>
+        <div style={{ background: "var(--color-accent-light)", border: "1px solid var(--color-accent-mid)", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "var(--color-text-2)" }}>
           Why is the Payment Gateway at critical risk?
-          <span style={{ float: "right", fontSize: 10, color: "var(--color-text-4)" }}>10:04 AM ✓</span>
+          <span style={{ float: "right", fontSize: 10, color: "var(--color-text-4)" }}>10:04 AM</span>
         </div>
       </div>
 
@@ -260,14 +331,14 @@ function AICopilot({ incidents, metrics, health }) {
         {msgs.map((m, i) => (
           <div key={i} className={m.r === "user" ? "msg-user" : m.r === "ai" ? "msg-ai" : "msg-sys"}
                style={{ fontSize: 12 }}>
-            {m.r === "ai"   && <div style={{ fontSize: 10, color: "var(--color-purple)", fontWeight: 600, marginBottom: 3 }}>AI Copilot</div>}
-            {m.r === "user" && <div style={{ fontSize: 10, color: "var(--color-blue-dark)", fontWeight: 600, marginBottom: 3 }}>You</div>}
+            {m.r === "ai"   && <div style={{ fontSize: 10, color: "var(--color-accent-dark)", fontWeight: 600, marginBottom: 3 }}>MITRE Copilot</div>}
+            {m.r === "user" && <div style={{ fontSize: 10, color: "var(--color-text-3)", fontWeight: 600, marginBottom: 3 }}>You</div>}
             <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{m.t}</p>
           </div>
         ))}
         {busy && (
           <div className="msg-ai" style={{ fontSize: 12 }}>
-            <div style={{ fontSize: 10, color: "var(--color-purple)", fontWeight: 600, marginBottom: 3 }}>AI Copilot</div>
+            <div style={{ fontSize: 10, color: "var(--color-accent-dark)", fontWeight: 600, marginBottom: 3 }}>MITRE Copilot</div>
             <div style={{ display: "flex", gap: 4, height: 16, alignItems: "center" }}>
               <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
             </div>
@@ -279,15 +350,11 @@ function AICopilot({ incidents, metrics, health }) {
       {/* Quick prompts */}
       <div style={{ padding: "8px 16px", borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
         {quick.map(q => (
-          <button key={q} onClick={() => setInput(q)}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              width: "100%", padding: "6px 10px", background: "var(--color-surface-2)",
-              border: "1px solid var(--color-border)", borderRadius: 6, marginBottom: 4,
-              fontSize: 12, color: "var(--color-blue-dark)", cursor: "pointer",
-              textAlign: "left", fontFamily: "var(--font-sans)",
-            }}>
-            <span style={{ color: "var(--color-blue)" }}>✦</span> {q}
+          <button key={q} className="quick-prompt-btn" onClick={() => setInput(q)}>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+              <path d="M8 2l1.5 3 3.5.5-2.5 2.4.6 3.6L8 10l-3.1 1.5.6-3.6L3 5.5 6.5 5 8 2z" fill="currentColor"/>
+            </svg>
+            {q}
           </button>
         ))}
       </div>
@@ -296,10 +363,13 @@ function AICopilot({ incidents, metrics, health }) {
       <form onSubmit={send} style={{ display: "flex", gap: 6, padding: "10px 16px", borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
         <input className="input" style={{ fontSize: 12, flex: 1 }} value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Ask the AI Copilot…" disabled={busy} />
-        <button className="btn btn-primary" type="submit" disabled={!input.trim() || busy}
+          placeholder="Ask MITRE Copilot about this incident…" disabled={busy} />
+        <button className="btn btn-accent" type="submit" disabled={!input.trim() || busy}
           style={{ width: 36, height: 36, borderRadius: "50%", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          →
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
         </button>
       </form>
     </div>
@@ -394,20 +464,21 @@ export default function FIFAOperations() {
       {selNode && (
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+          background: "rgba(15, 23, 42, 0.6)", backdropFilter: "blur(4px)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          zIndex: 9999
+          zIndex: "var(--z-modal)"
         }} onClick={() => setSelNode(null)}>
           <div style={{
             background: "var(--color-surface)", border: "1px solid var(--color-border)",
             borderRadius: 12, width: 450, maxWidth: "90%", maxHeight: "90%",
             display: "flex", flexDirection: "column",
-            boxShadow: "0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)",
-            animation: "fadeIn 0.2s ease-out"
+            boxShadow: "0 24px 64px rgba(15, 23, 42, 0.3), 0 0 0 1px rgba(255,255,255,0.06) inset",
+            animation: "fade-in 0.2s ease-out"
           }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 14px 0 0" }}>
               <button onClick={() => setSelNode(null)} style={{
-                background: "none", border: "none", color: "var(--color-text-3)", fontSize: 24, cursor: "pointer", padding: "0 8px"
+                background: "none", border: "none", color: "var(--color-text-3)", fontSize: 22, cursor: "pointer",
+                padding: "0 8px", lineHeight: 1, borderRadius: 4, transition: "color 0.12s"
               }}>×</button>
             </div>
             <div style={{ overflowY: "auto", paddingBottom: 16 }}>
