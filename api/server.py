@@ -225,6 +225,75 @@ async def _close_pubsub(pub, channel: str = "incidents.live") -> None:
         await pub.aclose()
 
 
+@app.get("/api/actions")
+async def get_actions():
+    """Fetch the latest actions from the agent."""
+    action_ids = await R.lrange("soc:actions", 0, -1)
+    if not action_ids:
+        return []
+    pipe = R.pipeline()
+    for a_id in action_ids:
+        pipe.get(f"action:{a_id.decode() if isinstance(a_id, bytes) else a_id}")
+    raws = await pipe.execute()
+    return [json.loads(r) for r in raws if r]
+
+@app.post("/api/actions/{action_id}/approve")
+async def approve_action_endpoint(action_id: str, _principal: dict = Depends(require_auth)):
+    """Approve a pending action."""
+    from pipeline.actuators import approve_action
+    result = await asyncio.to_thread(approve_action, action_id)
+    if result.get("status") == "error":
+        return JSONResponse(result, status_code=400)
+    return result
+
+@app.post("/api/actions/{action_id}/reject")
+async def reject_action_endpoint(action_id: str, _principal: dict = Depends(require_auth)):
+    """Reject a pending action."""
+    from pipeline.actuators import reject_action
+    result = await asyncio.to_thread(reject_action, action_id)
+    if result.get("status") == "error":
+        return JSONResponse(result, status_code=400)
+    return result
+
+@app.post("/api/sandbox/remediate")
+async def remediate_sandbox():
+    try:
+        import requests
+        requests.post("http://sandbox:8000/admin/block?target_ip=ALL", timeout=5)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to call sandbox: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/sandbox/reset")
+async def reset_sandbox():
+    try:
+        import requests
+        requests.post("http://sandbox:8000/admin/reset", timeout=5)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to reset sandbox: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+@app.websocket("/api/ws/actions")
+async def ws_actions(sock: WebSocket):
+    if not await authorize_ws(sock):
+        return
+    await sock.accept()
+    pub = R.pubsub()
+    await pub.subscribe("actions.live")
+    try:
+        async for m in pub.listen():
+            if m["type"] == "message":
+                action_id = m["data"].decode()
+                action_raw = await R.get(f"action:{action_id}")
+                if action_raw:
+                    await sock.send_text(action_raw)
+    except Exception as e:
+        logger.info("Actions WebSocket closed: %s: %s", type(e).__name__, e)
+    finally:
+        await _close_pubsub(pub, "actions.live")
+
 @app.websocket("/api/ws/incidents")
 async def ws(sock: WebSocket):
     # Authorize BEFORE accepting: rejects the handshake if the key is missing.
@@ -244,3 +313,19 @@ async def ws(sock: WebSocket):
         logger.info("WebSocket closed: %s: %s", type(e).__name__, e)
     finally:
         await _close_pubsub(pub)
+
+@app.websocket("/api/ws/sandbox")
+async def ws_sandbox(sock: WebSocket):
+    if not await authorize_ws(sock):
+        return
+    await sock.accept()
+    pub = R.pubsub()
+    await pub.subscribe("sandbox.logs")
+    try:
+        async for m in pub.listen():
+            if m["type"] == "message":
+                await sock.send_text(m["data"].decode())
+    except Exception as e:
+        logger.info("Sandbox WebSocket closed: %s: %s", type(e).__name__, e)
+    finally:
+        await _close_pubsub(pub, "sandbox.logs")

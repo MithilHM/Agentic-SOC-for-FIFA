@@ -3,6 +3,7 @@ import { useNexus } from "./store";
 import PipelineMonitor       from "./dashboards/PipelineMonitor";
 import IncidentInvestigation from "./dashboards/IncidentInvestigation";
 import FIFAOperations        from "./dashboards/FIFAOperations";
+import AgenticCenter         from "./dashboards/AgenticCenter";
 
 /* ── FIFA AI-SIEM Logo mark ── */
 function FifaLogo() {
@@ -20,6 +21,7 @@ const TABS = [
   { id: "pipeline",      label: "Pipeline Monitor" },
   { id: "investigation", label: "Incident Investigation" },
   { id: "operations",    label: "FIFA Operations" },
+  { id: "agentic",       label: "Agent Response Center" },
 ];
 
 export default function App() {
@@ -117,6 +119,7 @@ export default function App() {
         {view === "pipeline"      && <PipelineMonitor />}
         {view === "investigation" && <IncidentInvestigation />}
         {view === "operations"    && <FIFAOperations />}
+        {view === "agentic"       && <AgenticCenter />}
       </main>
     </div>
   );

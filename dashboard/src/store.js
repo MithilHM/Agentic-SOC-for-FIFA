@@ -16,6 +16,8 @@ export const useNexus = create((set, get) => ({
 
   /* ── Data ── */
   incidents: [],
+  actions:   [],
+  sandboxLogs: [],
   metrics:   {},
   health:    null,
   selected:  null,        // selected incident_id
@@ -43,12 +45,13 @@ export const useNexus = create((set, get) => ({
   /* ── Load all data ── */
   async load() {
     try {
-      const [incidents, metrics, health] = await Promise.all([
+      const [incidents, metrics, health, actions] = await Promise.all([
         fetch(`${API}/api/incidents`, { headers: authHeader() }).then(r => r.json()),
         fetch(`${API}/api/metrics`,   { headers: authHeader() }).then(r => r.json()),
         fetch(`${API}/api/health`,    { headers: authHeader() }).then(r => r.json()).catch(() => null),
+        fetch(`${API}/api/actions`,   { headers: authHeader() }).then(r => r.json()).catch(() => []),
       ]);
-      set({ incidents, metrics, health });
+      set({ incidents, metrics, health, actions });
       // Auto-select first incident if none selected
       if (!get().selected && incidents.length > 0) {
         get().select(incidents[0].incident_id);
@@ -66,7 +69,7 @@ export const useNexus = create((set, get) => ({
     const wsBase = API.replace(/^http/, "ws");
     const token  = API_KEY ? `?token=${encodeURIComponent(API_KEY)}` : "";
 
-    let ws;
+    let ws, wsActions, wsSandbox;
     const open = () => {
       ws = new WebSocket(`${wsBase}/api/ws/incidents${token}`);
       ws.onopen    = () => set({ connected: true, connecting: false });
@@ -84,6 +87,29 @@ export const useNexus = create((set, get) => ({
         setTimeout(open, 4000);
       };
       ws.onerror = () => ws.close();
+
+      // Actions WebSocket
+      wsActions = new WebSocket(`${wsBase}/api/ws/actions${token}`);
+      wsActions.onmessage = (e) => {
+        try {
+          const act = JSON.parse(e.data);
+          const rest = get().actions.filter(x => x.action_id !== act.action_id);
+          set({ actions: [act, ...rest] });
+        } catch (_) {}
+      };
+      wsActions.onerror = () => wsActions.close();
+
+      // Sandbox WebSocket
+      wsSandbox = new WebSocket(`${wsBase}/api/ws/sandbox${token}`);
+      wsSandbox.onmessage = (e) => {
+        try {
+          const log = JSON.parse(e.data);
+          set(state => ({
+            sandboxLogs: [...state.sandboxLogs, { ...log, timestamp: Date.now() }].slice(-100) // keep last 100
+          }));
+        } catch (_) {}
+      };
+      wsSandbox.onerror = () => wsSandbox.close();
     };
     open();
   },
@@ -106,5 +132,20 @@ export const useNexus = create((set, get) => ({
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return data.answer;
+  },
+
+  /* ── Action Approval/Rejection ── */
+  async approveAction(actionId) {
+    const res = await fetch(`${API}/api/actions/${actionId}/approve`, {
+      method: "POST", headers: authHeader(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  },
+
+  async rejectAction(actionId) {
+    const res = await fetch(`${API}/api/actions/${actionId}/reject`, {
+      method: "POST", headers: authHeader(),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   },
 }));

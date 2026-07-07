@@ -472,34 +472,60 @@ function ThreatIntelPanel({ inc }) {
         <button className="btn btn-primary"   style={{ fontSize: 11 }} onClick={() => setShowReportModal(true)}>📄 Generate Report</button>
       </div>
 
-      {/* Quick Q&A */}
+      {/* Agent Activity Feed & Approvals */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 300 }}>
-        <div style={{ flex: 1, padding: "16px", display: "flex", flexDirection: "column", gap: 8 }}>
-          {msgs.map((m, i) => (
-            <div key={i} className={m.r === "user" ? "msg-user" : m.r === "ai" ? "msg-ai" : "msg-sys"}
-                 style={{ fontSize: 12 }}>
-              {m.r === "ai"   && <div style={{ fontSize: 10, color: "var(--color-purple)", fontWeight: 600, marginBottom: 3 }}>MITRE RAG Engine</div>}
-              {m.r === "user" && <div style={{ fontSize: 10, color: "var(--color-blue-dark)", fontWeight: 600, marginBottom: 3 }}>You</div>}
-              <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{m.t}</p>
-            </div>
-          ))}
-          {busy && (
-            <div className="msg-ai" style={{ fontSize: 12 }}>
-              <div style={{ fontSize: 10, color: "var(--color-purple)", fontWeight: 600, marginBottom: 3 }}>MITRE RAG Engine</div>
-              <div style={{ display: "flex", gap: 4, height: 16, alignItems: "center" }}>
-                <div className="typing-dot" /><div className="typing-dot" /><div className="typing-dot" />
-              </div>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--color-border)", background: "var(--color-surface)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text)" }}>🤖 Agent Activity Feed</span>
+          <span className="badge badge-purple" style={{ fontSize: 9 }}>Autonomous Mode</span>
+        </div>
+        
+        <div style={{ flex: 1, padding: "16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", background: "var(--color-bg)" }}>
+          {useNexus().actions.filter(a => a.incident_id === inc.incident_id).length === 0 && (
+            <div style={{ textAlign: "center", color: "var(--color-text-4)", fontSize: 12, marginTop: 20 }}>
+              No agent actions taken yet.
             </div>
           )}
-          <div ref={endRef} />
+          
+          {useNexus().actions.filter(a => a.incident_id === inc.incident_id).sort((a, b) => a.timestamp - b.timestamp).map((act, i) => (
+            <div key={i} style={{
+              background: "var(--color-surface)", border: "1px solid var(--color-border)", 
+              borderRadius: 8, padding: 12, position: "relative"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-text)" }}>
+                  {act.action_type.toUpperCase()}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--color-text-4)" }}>
+                  {new Date(act.timestamp * 1000).toLocaleTimeString()}
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--color-text-2)", marginBottom: 8 }}>
+                {act.message}
+              </div>
+              
+              {/* Status Badge */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className={`badge ${act.status === 'executed' ? 'badge-low' : act.status === 'rejected' ? 'badge-critical' : 'badge-high'}`} style={{ fontSize: 9 }}>
+                  {act.status.replace("_", " ").toUpperCase()}
+                </span>
+              </div>
+              
+              {/* Approval Actions */}
+              {act.status === "pending_approval" && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button className="btn" style={{ background: "var(--color-green)", color: "#fff", flex: 1, fontSize: 11, border: "none" }}
+                          onClick={() => useNexus().approveAction(act.action_id)}>
+                    Approve
+                  </button>
+                  <button className="btn" style={{ background: "var(--color-red)", color: "#fff", flex: 1, fontSize: 11, border: "none" }}
+                          onClick={() => useNexus().rejectAction(act.action_id)}>
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
-        <form onSubmit={send} style={{ display: "flex", gap: 6, padding: "10px 16px", borderTop: "1px solid var(--color-border)", flexShrink: 0 }}>
-          <input className="input" style={{ fontSize: 12, flex: 1 }} value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder={inc ? "Ask MITRE RAG about this incident…" : "Select incident first…"}
-            disabled={!inc || busy} />
-          <button className="btn btn-primary" type="submit" disabled={!inc || !input.trim() || busy} style={{ padding: "6px 12px" }}>→</button>
-        </form>
       </div>
 
       {/* Report Modal Popup */}

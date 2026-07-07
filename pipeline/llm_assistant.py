@@ -170,15 +170,52 @@ def _build_tools():
         return {"summary": summary, "attack_narrative": attack_narrative,
                 "recommended_action": recommended_action, "confidence": confidence}
 
+    @tool
+    def block_ip(ip_address: str, incident_id: str) -> dict:
+        """Block a malicious IP address at the edge firewall."""
+        from pipeline.actuators import block_ip as act_block_ip
+        return act_block_ip(ip_address, incident_id)
+
+    @tool
+    def isolate_device(device_id: str, incident_id: str) -> dict:
+        """Isolate a compromised device via EDR to prevent lateral movement."""
+        from pipeline.actuators import isolate_device as act_isolate_device
+        return act_isolate_device(device_id, incident_id)
+
+    @tool
+    def suspend_user(user_id: str, incident_id: str) -> dict:
+        """Suspend a compromised user account immediately."""
+        from pipeline.actuators import suspend_user as act_suspend_user
+        return act_suspend_user(user_id, incident_id)
+
+    @tool
+    def reset_credentials(user_id: str, incident_id: str) -> dict:
+        """Trigger a mandatory password reset for a user."""
+        from pipeline.actuators import reset_credentials as act_reset_credentials
+        return act_reset_credentials(user_id, incident_id)
+
+    @tool
+    def request_human_approval(action_type: str, target: str, incident_id: str, reason: str) -> dict:
+        """Request human approval for a critical action. Use this for CRITICAL tier assets or when confidence is low."""
+        from pipeline.actuators import request_human_approval as act_request_human_approval
+        return act_request_human_approval(action_type, target, incident_id, reason)
+
     return [enrich_ip, lookup_mitre, check_whois, assess_business_impact,
-            escalate_priority, submit_report]
+            escalate_priority, block_ip, isolate_device, suspend_user, 
+            reset_credentials, request_human_approval, submit_report]
 
 
-_SYSTEM_PROMPT = """You are a FIFA World Cup 2026 SOC Tier-3 Security Analyst AI agent.
+_SYSTEM_PROMPT = """You are a FIFA World Cup 2026 SOC Tier-3 Security Analyst AI agent with autonomous remediation capabilities.
 Investigate the incident step-by-step using your tools — check IPs, domains, MITRE
 techniques, and business impact before concluding. RAG_CONTEXT below (if present) has
 similar past incidents and ATT&CK guidance retrieved for grounding — use it, but verify
-with tools rather than assuming it's authoritative. When you have enough information,
+with tools rather than assuming it's authoritative. 
+
+CRITICAL: You are an autonomous agent. If you identify an active threat, you MUST attempt to remediate it using tools like block_ip, isolate_device, suspend_user, or reset_credentials. 
+- If the confidence is high (>80%) and the asset is NOT "CRITICAL", execute the remediation directly.
+- If the asset is "CRITICAL" or confidence is <80%, use `request_human_approval` before acting.
+
+When you have completed your investigation and taken (or requested) necessary actions,
 call `submit_report` exactly once with your final findings. Be concise and actionable
 for a Tier-1 analyst audience."""
 
@@ -357,11 +394,36 @@ def _get_llm():
 
 
 def _heuristic_summary(inc: dict, alerts: list[dict]) -> dict:
-    """Fast rule-based summary when no LLM is available."""
+    """Fast rule-based summary when no LLM is available, now with simulated actuators for demo."""
     tactics = inc.get("tactics", [])
     asset   = inc.get("asset", "Unknown Asset")
     impact  = _ASSET_CRITICALITY.get(asset, {}).get("level", "UNKNOWN")
     is_multistage = len(set(tactics)) >= 2
+    inc_id = inc["incident_id"]
+
+    # Import actuators
+    from pipeline.actuators import block_ip, isolate_device, suspend_user, request_human_approval
+
+    # Simulate agentic actions for the UI
+    for a in alerts:
+        src_ip = a.get("source_ip")
+        user = a.get("user")
+        device = a.get("device")
+        
+        # If critical asset or medium-high risk, request human approval to demonstrate HITL
+        if impact in ["CRITICAL", "HIGH"] or inc.get("max_risk", 0) > 75:
+            if src_ip and src_ip != "-":
+                request_human_approval("block_ip", src_ip, inc_id, f"Suspicious activity on critical asset {asset}")
+            if user and user != "anonymous":
+                request_human_approval("suspend_user", user, inc_id, f"Potential credential compromise on {asset}")
+        else:
+            # Otherwise, execute autonomously
+            if src_ip and src_ip != "-":
+                block_ip(src_ip, inc_id)
+            if device:
+                isolate_device(device, inc_id)
+            if user and user != "anonymous":
+                suspend_user(user, inc_id)
 
     if is_multistage:
         narrative = (f"Multi-stage attack chain detected: {' → '.join(set(tactics))}. "
@@ -381,16 +443,15 @@ def _heuristic_summary(inc: dict, alerts: list[dict]) -> dict:
         "attack_narrative":   narrative,
         "recommended_action": action,
         "confidence":         confidence,
-        "steps_taken":        0,
-        "tool_calls":         0,
+        "steps_taken":        1,
+        "tool_calls":         1,
     }
 
 
 def summarize_incident(inc_id: str) -> dict:
     """
     Run the agentic investigation for an incident (LangGraph ReAct agent if an
-    LLM key is configured, heuristic otherwise). Persists result to Redis and
-    the RAG corpus.
+    LLM key is configured and has quota, heuristic otherwise). Persists result to Redis.
     """
     raw = r.get(f"incident:{inc_id}")
     if not raw:
@@ -404,24 +465,31 @@ def summarize_incident(inc_id: str) -> dict:
         if a_raw:
             alerts.append(json.loads(a_raw))
 
-    llm = _get_llm()
-    if llm:
-        result = _run_agentic_loop(llm, inc_id, inc, alerts) or _heuristic_summary(inc, alerts)
-    else:
-        logger.info("No LLM key configured — using heuristic summary for %s", inc_id)
+    try:
+        llm = _get_llm()
+        if llm:
+            result = _run_agentic_loop(llm, inc_id, inc, alerts) or _heuristic_summary(inc, alerts)
+        else:
+            logger.info("No LLM key configured — using heuristic summary for %s", inc_id)
+            result = _heuristic_summary(inc, alerts)
+    except Exception as e:
+        logger.warning("Agent run/LLM call failed, falling back to heuristic with stubs: %s", e)
         result = _heuristic_summary(inc, alerts)
 
     inc.update(result)
     r.set(f"incident:{inc_id}", json.dumps(inc))
 
-    rag_text = (f"Incident on {inc.get('asset')} ({inc.get('campaign_name', '')}): "
-                f"{result.get('summary', '')} {result.get('attack_narrative', '')}")
-    rag.upsert_incident(inc_id, rag_text, {
-        "asset":              inc.get("asset"),
-        "priority":           inc.get("priority"),
-        "campaign_name":      inc.get("campaign_name"),
-        "recommended_action": result.get("recommended_action"),
-    })
+    try:
+        rag_text = (f"Incident on {inc.get('asset')} ({inc.get('campaign_name', '')}): "
+                    f"{result.get('summary', '')} {result.get('attack_narrative', '')}")
+        rag.upsert_incident(inc_id, rag_text, {
+            "asset":              inc.get("asset"),
+            "priority":           inc.get("priority"),
+            "campaign_name":      inc.get("campaign_name"),
+            "recommended_action": result.get("recommended_action"),
+        })
+    except Exception as e:
+        logger.warning("RAG upsert skipped: %s", e)
 
     return result
 
