@@ -58,6 +58,14 @@ _ENRICH_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="enrich")
 # partial data (heuristic fallback is used automatically inside enrich()).
 _ENRICH_TIMEOUT = float(os.getenv("ENRICH_TIMEOUT_SEC", "15"))
 
+# Dedicated thread pool for LLM agentic analysis.
+# Kept separate from _ENRICH_POOL so that slow Gemini calls (5–15 s each)
+# never eat the enrichment workers.  max_workers=2 caps concurrent LLM calls
+# so we don't saturate the Gemini API quota under a burst of new incidents.
+# The main consumer thread submits work here and NEVER waits for the result —
+# completion/failure is logged inside _run_llm_task().
+_LLM_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm")
+
 # ── Liveness heartbeat ────────────────────────────────────────────────────
 # `beat_ts` is refreshed every consumer-loop cycle (proves the worker loop is
 # alive even when idle); `processed_ts` advances only when an alert is actually
@@ -94,6 +102,22 @@ def _ensure_group():
 def _is_new_incident(inc_id: str, alert_count: int) -> bool:
     """Return True if this is the first alert in the incident (triggers LLM)."""
     return alert_count == 1
+
+
+def _run_llm_task(inc_id: str) -> None:
+    """Run LLM agentic summarization in a background thread.
+
+    This is the *only* function submitted to _LLM_POOL.  It is designed to be
+    fire-and-forget: the main consumer thread never awaits the returned Future.
+    All exceptions are caught here so a failing LLM call cannot propagate into
+    the pool's exception handling and silently swallow the error.
+    """
+    try:
+        logger.info("[LLM] Starting agentic investigation for incident %s", inc_id)
+        summarize_incident(inc_id)
+        logger.info("[LLM] Completed investigation for incident %s", inc_id)
+    except Exception as exc:
+        logger.error("[LLM] Summarization failed for %s: %s", inc_id, exc)
 
 
 def run():
@@ -177,16 +201,16 @@ def _process_one(msg_id: bytes, fields: dict):
         "[%s] alert=%s src=%s inc=%s risk=%d sev=%s type=%s %s",
         a.event_source, a.alert_id, a.source_ip or "-",
         inc_id, a.risk_score, a.severity, a.event_type,
-        "★NEW" if is_new else "",
+        "*NEW" if is_new else "",
     )
 
-    # ── 7. LLM agentic summary — only on NEW incident ────────────────────────
+    # ── 7. LLM agentic summary — only on NEW incident (fire-and-forget) ────────
+    # IMPORTANT: do NOT await or .result() the future here.  The main consumer
+    # thread must remain free to process the next message and write heartbeats.
+    # _run_llm_task() handles all logging and exception handling internally.
     if is_new and os.getenv("DISABLE_LLM", "0") != "1":
-        try:
-            logger.info("Triggering agentic investigation for NEW incident %s", inc_id)
-            summarize_incident(inc_id)
-        except Exception as e:
-            logger.error("LLM summarization failed for %s: %s", inc_id, e)
+        logger.info("Submitting LLM task to background pool for incident %s", inc_id)
+        _LLM_POOL.submit(_run_llm_task, inc_id)
 
     # ── 8. Notify WebSocket clients ───────────────────────────────────────────
     r.publish("incidents.live", inc_id)

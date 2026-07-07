@@ -514,12 +514,52 @@ export default function PipelineMonitor() {
     return () => clearInterval(id);
   }, []);
 
+  // --- Derive real values from backend metrics ---
+  const openInc  = metrics?.open_incidents ?? null;
+  const p1Count  = metrics?.p1 ?? null;
+  const byType   = metrics?.by_type   || {};
+  const bySev    = metrics?.by_severity || {};
+
+  // Build live attack type data from real backend metrics when available
+  const ATTACK_TYPE_COLORS = [
+    "#3b82f6", "#ef4444", "#8b5cf6", "#f59e0b", "#f97316", "#94a3b8",
+    "#10b981", "#06b6d4", "#ec4899", "#14b8a6",
+  ];
+  const liveAttackTypes = Object.keys(byType).length > 0
+    ? Object.entries(byType).map(([name, value], i) => ({
+        name, value, color: ATTACK_TYPE_COLORS[i % ATTACK_TYPE_COLORS.length],
+      }))
+    : ATTACK_TYPES;
+
   const metricCards = [
-    { label: "Alerts Ingested / sec", icon: "📥", value: sim.ingested,  delta: "+18.6% vs last 5m", up: true,  color: "#3b82f6",  key: "ing" },
-    { label: "Alerts Processed / sec", icon: "⚙️", value: sim.processed, delta: "+16.3% vs last 5m", up: true,  color: "#22c55e",  key: "proc" },
-    { label: "Redis Queue Length",     icon: "⬡",  value: sim.queueLen.toLocaleString(), delta: "+8.4% vs last 5m", up: false, color: "#8b5cf6",  key: "queue" },
-    { label: "Pipeline Latency",       icon: "⏱",  value: `${sim.latency} ms`,           delta: "↓12.7% vs last 5m", up: true, color: "#f59e0b", key: "lat" },
-    { label: "MITRE RAG Engine",       icon: "✦",  value: "Active",                      delta: "All systems operational", up: true, color: "#8b5cf6", isText: true },
+    {
+      label: "Open Incidents",        icon: "🚨",
+      value: openInc != null ? openInc : "—",
+      delta: openInc != null ? "Live from Redis" : "Connecting…",
+      up: true, color: "#ef4444",  key: "inc", isLive: openInc != null,
+    },
+    {
+      label: "P1 Critical Incidents", icon: "🔥",
+      value: p1Count != null ? p1Count : "—",
+      delta: p1Count != null ? "Live from Redis" : "Connecting…",
+      up: false, color: "#f97316", key: "p1",  isLive: p1Count != null,
+    },
+    {
+      label: "Alerts Ingested / sec", icon: "📥",
+      value: sim.ingested,
+      delta: "~est. (no rate API)", up: true, color: "#3b82f6", key: "ing", isLive: false,
+    },
+    {
+      label: "Pipeline Latency",      icon: "⏱",
+      value: `${sim.latency} ms`,
+      delta: "~est. (no rate API)", up: true, color: "#f59e0b", key: "lat", isLive: false,
+    },
+    {
+      label: "MITRE RAG Engine",      icon: "✦",
+      value: "Active",
+      delta: connected ? "All systems operational" : "Offline",
+      up: connected, color: "#8b5cf6", isText: true, key: "rag", isLive: connected,
+    },
   ];
 
   return (
@@ -554,9 +594,22 @@ export default function PipelineMonitor() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
           {metricCards.map((m, i) => (
             <div key={m.key} className="metric-card anim" style={{ animationDelay: `${i * 50}ms` }}>
-              <div className="metric-label">
-                <span style={{ fontSize: 14 }}>{m.icon}</span>
-                {m.label}
+              <div className="metric-label" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 14 }}>{m.icon}</span>
+                  {m.label}
+                </span>
+                {m.isLive != null && (
+                  <span style={{
+                    fontSize: 8, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                    background: m.isLive ? "#dcfce7" : "#f1f5f9",
+                    color: m.isLive ? "#16a34a" : "#94a3b8",
+                    border: `1px solid ${m.isLive ? "#bbf7d0" : "#e2e8f0"}`,
+                    letterSpacing: "0.04em",
+                  }}>
+                    {m.isLive ? "● LIVE" : "~ EST"}
+                  </span>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
                 <div>
@@ -609,6 +662,40 @@ export default function PipelineMonitor() {
                   <span style={{ fontSize: 9, fontWeight: 800, color: "var(--color-blue)", background: "var(--color-blue-light)", padding: "2px 6px", borderRadius: 4, marginBottom: 4 }}>{src.code}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, color: "var(--color-text)", whiteSpace: "nowrap" }}>{src.name}</span>
                   <span style={{ fontSize: 9, color: "var(--color-text-3)", fontFamily: "var(--font-mono)", marginTop: 1 }}>{rate} eps</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Attack Type Distribution — driven by real metrics.by_type */}
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header" style={{ padding: "10px 16px", borderBottom: "1px solid var(--color-border)" }}>
+            <span className="card-title" style={{ fontSize: 12 }}>Attack Type Distribution</span>
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+              background: Object.keys(byType).length > 0 ? "#dcfce7" : "#f1f5f9",
+              color: Object.keys(byType).length > 0 ? "#16a34a" : "#94a3b8",
+              border: `1px solid ${Object.keys(byType).length > 0 ? "#bbf7d0" : "#e2e8f0"}`,
+            }}>
+              {Object.keys(byType).length > 0 ? "● LIVE DATA" : "● SAMPLE DATA"}
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px", padding: "12px 16px" }}>
+            {liveAttackTypes.map(t => {
+              const total = liveAttackTypes.reduce((s, x) => s + x.value, 0) || 1;
+              const pct = Math.round((t.value / total) * 100);
+              return (
+                <div key={t.name} style={{ marginBottom: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, color: "var(--color-text-2)", fontWeight: 500 }}>{t.name}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: t.color }}>
+                      {pct}% <span style={{ fontWeight: 400, color: "var(--color-text-4)", fontSize: 10 }}>({t.value})</span>
+                    </span>
+                  </div>
+                  <div style={{ height: 6, background: "var(--color-surface-2)", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: t.color, borderRadius: 4, transition: "width 0.6s ease" }} />
+                  </div>
                 </div>
               );
             })}

@@ -45,3 +45,7 @@ node_modules/
 
 # Kubernetes
 kubeconfig
+
+# Project review
+project-review.md
+

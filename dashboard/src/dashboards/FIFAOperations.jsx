@@ -1,18 +1,49 @@
 import { useState, useEffect, useRef } from "react";
 import { useNexus } from "../store";
 
-/* ── FIFA infrastructure nodes ── */
-const NODES = [
-  { id: "ticket",    label: "Official Ticket Portal",  icon: "🎫", x: 16, y: 30, status: "ok",       uptime: "99.2%" },
-  { id: "auth",      label: "Authentication Server",   icon: "🔐", x: 50, y: 12, status: "ok",       uptime: "99.5%" },
-  { id: "payment",   label: "Payment Gateway",         icon: "💳", x: 50, y: 50, status: "critical", uptime: "97.1%", risk: 92 },
-  { id: "streaming", label: "Streaming Platform",      icon: "▶️",  x: 84, y: 30, status: "ok",       uptime: "99.7%" },
-  { id: "media",     label: "Media Portal",            icon: "📡", x: 16, y: 62, status: "ok",       uptime: "98.2%" },
-  { id: "cloud",     label: "Cloud Infrastructure",    icon: "☁️",  x: 84, y: 62, status: "warning",  uptime: "95.3%", risk: 43 },
-  { id: "wifi",      label: "Stadium WiFi",            icon: "📶", x: 16, y: 86, status: "ok",       uptime: "98.9%" },
-  { id: "admin",     label: "Admin Console",           icon: "⚙️",  x: 50, y: 82, status: "warning",  uptime: "91.0%", risk: 48 },
-  { id: "identity",  label: "Identity Server",         icon: "🔑", x: 84, y: 86, status: "ok",       uptime: "99.6%" },
+/* ── FIFA infrastructure nodes (base template — status computed from live incidents) ── */
+const NODE_TEMPLATES = [
+  { id: "ticket",    label: "Official Ticket Portal",  icon: "🎫", x: 16, y: 30, keywords: ["ticket", "ticketing"] },
+  { id: "auth",      label: "Authentication Server",   icon: "🔐", x: 50, y: 12, keywords: ["auth", "identity", "login", "credential"] },
+  { id: "payment",   label: "Payment Gateway",         icon: "💳", x: 50, y: 50, keywords: ["payment", "gateway", "checkout", "financial"] },
+  { id: "streaming", label: "Streaming Platform",      icon: "▶️",  x: 84, y: 30, keywords: ["stream", "media", "broadcast", "video"] },
+  { id: "media",     label: "Media Portal",            icon: "📡", x: 16, y: 62, keywords: ["portal", "cms", "content"] },
+  { id: "cloud",     label: "Cloud Infrastructure",    icon: "☁️",  x: 84, y: 62, keywords: ["cloud", "infra", "server", "host"] },
+  { id: "wifi",      label: "Stadium WiFi",            icon: "📶", x: 16, y: 86, keywords: ["wifi", "stadium", "network", "wireless"] },
+  { id: "admin",     label: "Admin Console",           icon: "⚙️",  x: 50, y: 82, keywords: ["admin", "console", "manage"] },
+  { id: "identity",  label: "Identity Server",         icon: "🔑", x: 84, y: 86, keywords: ["identity", "sso", "ldap", "active directory"] },
 ];
+
+/** Map incidents → node statuses.
+ *  Returns an array of NODE_TEMPLATES augmented with live status/risk/uptime. */
+function computeNodes(incidents) {
+  return NODE_TEMPLATES.map(tmpl => {
+    // Find all active incidents that touch this node
+    const related = incidents.filter(inc => {
+      const asset = (inc.asset || inc.campaign_name || "").toLowerCase();
+      return tmpl.keywords.some(kw => asset.includes(kw));
+    });
+
+    // Determine status from the highest-priority incident
+    let status = "ok";
+    let risk   = null;
+    const priorities = ["P1", "P2", "P3", "P4"];
+    const sorted = [...related].sort(
+      (a, b) => priorities.indexOf(a.priority) - priorities.indexOf(b.priority)
+    );
+    if (sorted.length > 0) {
+      const top = sorted[0];
+      if (top.priority === "P1" || top.priority === "P2") status = "critical";
+      else if (top.priority === "P3") status = "warning";
+      else status = "warning";
+      risk = top.max_risk || null;
+    }
+
+    // Uptime: degrade slightly when critical/warning
+    const uptimeMap = { ok: "99.9%", warning: "94.2%", critical: "87.1%" };
+    return { ...tmpl, status, risk, uptime: uptimeMap[status] };
+  });
+}
 
 const EDGES = [
   ["ticket","auth"],["ticket","payment"],
@@ -26,14 +57,14 @@ const EDGES = [
 const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
 const STATUS_LABEL = { ok: "Healthy", warning: "Warning", critical: "Critical" };
 
-function DigitalTwin({ selectedNode, onSelect }) {
+function DigitalTwin({ nodes, selectedNode, onSelect }) {
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", minHeight: 300 }}>
       {/* SVG edges */}
       <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
         {EDGES.map(([a, b]) => {
-          const nA = NODES.find(n => n.id === a);
-          const nB = NODES.find(n => n.id === b);
+          const nA = nodes.find(n => n.id === a);
+          const nB = nodes.find(n => n.id === b);
           if (!nA || !nB) return null;
           const isCritical = nA.status === "critical" || nB.status === "critical";
           const isWarn     = nA.status === "warning"  || nB.status === "warning";
@@ -50,7 +81,7 @@ function DigitalTwin({ selectedNode, onSelect }) {
       </svg>
 
       {/* Nodes */}
-      {NODES.map(node => {
+      {nodes.map(node => {
         const isSelected = selectedNode === node.id;
         const c = STATUS_COLOR[node.status];
         return (
@@ -87,16 +118,30 @@ function DigitalTwin({ selectedNode, onSelect }) {
 }
 
 /* ── Asset Detail sidebar ── */
-function AssetDetail({ nodeId, incidents }) {
-  const node = NODES.find(n => n.id === nodeId);
+function AssetDetail({ nodeId, nodes, incidents }) {
+  const node = nodes.find(n => n.id === nodeId);
   if (!node) return (
     <div style={{ padding: 20, color: "var(--color-text-4)", fontSize: 12, textAlign: "center" }}>
       Click an asset node in the digital twin to view its details
     </div>
   );
 
-  const related = incidents.filter(inc => inc.asset?.toLowerCase().includes(node.label.split(" ")[0].toLowerCase()));
+  // Match incidents to this node using its keywords
+  const tmpl = NODE_TEMPLATES.find(t => t.id === nodeId);
+  const related = incidents.filter(inc => {
+    const asset = (inc.asset || inc.campaign_name || "").toLowerCase();
+    return tmpl?.keywords.some(kw => asset.includes(kw));
+  });
+
   const c = STATUS_COLOR[node.status];
+
+  // Real alert count across related incidents
+  const totalAlerts = related.reduce((s, i) => s + (i.alert_ids?.length || 0), 0);
+
+  // Last incident timestamp
+  const lastIncident = related.length > 0
+    ? new Date(Math.max(...related.map(i => (i.last_seen || i.created || 0) * 1000))).toLocaleTimeString()
+    : "—";
 
   return (
     <div style={{ padding: "14px 16px" }}>
@@ -116,13 +161,12 @@ function AssetDetail({ nodeId, incidents }) {
       </div>
 
       {[
-        { k: "Current Risk Score",  v: node.risk ? `${node.risk} / 100` : "12 / 100",   vc: node.risk > 70 ? "var(--color-red)" : "var(--color-green-dark)" },
-        { k: "Health Status",       v: STATUS_LABEL[node.status],                         vc: c },
-        { k: "Open Incidents",      v: String(related.length || 0),                       vc: "var(--color-text)" },
-        { k: "Users Impacted",      v: node.status === "critical" ? "41,258" : "1,204",  vc: "var(--color-text)" },
-        { k: "Requests / sec",      v: node.status === "critical" ? "2,842" : "1,120",   vc: "var(--color-text)" },
-        { k: "Availability",        v: node.uptime,                                       vc: "var(--color-green-dark)" },
-        { k: "Last Incident",       v: new Date().toLocaleTimeString(),                   vc: "var(--color-text-3)" },
+        { k: "Current Risk Score",  v: node.risk ? `${node.risk} / 100` : "Low — No incidents", vc: node.risk > 70 ? "var(--color-red)" : "var(--color-green-dark)" },
+        { k: "Health Status",       v: STATUS_LABEL[node.status],   vc: c },
+        { k: "Open Incidents",      v: String(related.length),       vc: related.length > 0 ? "var(--color-red)" : "var(--color-green-dark)" },
+        { k: "Alerts (total)",      v: String(totalAlerts),          vc: totalAlerts > 5 ? "var(--color-red)" : "var(--color-text)" },
+        { k: "Availability",        v: node.uptime,                  vc: "var(--color-green-dark)" },
+        { k: "Last Incident",       v: lastIncident,                 vc: "var(--color-text-3)" },
       ].map(r => (
         <div key={r.k} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--color-border)" }}>
           <span style={{ fontSize: 11, color: "var(--color-text-3)" }}>{r.k}</span>
@@ -130,15 +174,25 @@ function AssetDetail({ nodeId, incidents }) {
         </div>
       ))}
 
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 11, color: "var(--color-text-4)", marginBottom: 6 }}>Related Threats</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {["🔴","🟠","🟡"].map((e, i) => (
-            <span key={i} style={{ fontSize: 16 }}>{e}</span>
+      {related.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--color-text-4)", marginBottom: 6 }}>Active Incidents</div>
+          {related.slice(0, 3).map(inc => (
+            <div key={inc.incident_id} style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "4px 0", fontSize: 11,
+            }}>
+              <span style={{ fontFamily: "var(--font-mono)", color: "var(--color-text-2)", fontWeight: 600 }}>{inc.incident_id}</span>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4,
+                background: inc.priority === "P1" ? "#fef2f2" : "#fff7ed",
+                color: inc.priority === "P1" ? "var(--color-red)" : "var(--color-yellow)",
+                border: `1px solid ${inc.priority === "P1" ? "#fca5a5" : "#fcd34d"}`,
+              }}>{inc.priority}</span>
+            </div>
           ))}
-          <span style={{ fontSize: 11, color: "var(--color-text-4)", marginLeft: 4 }}>+3</span>
         </div>
-      </div>
+      )}
 
     </div>
   );
@@ -259,6 +313,11 @@ export default function FIFAOperations() {
   const { incidents, metrics, health, connected } = useNexus();
   const [selNode, setSelNode] = useState(null);
 
+  // Compute live node statuses from active incidents on every render
+  const nodes = computeNodes(incidents);
+  const criticalCount = nodes.filter(n => n.status === "critical").length;
+  const warningCount  = nodes.filter(n => n.status === "warning").length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", background: "var(--color-bg)", paddingBottom: 40 }}>
 
@@ -295,6 +354,22 @@ export default function FIFAOperations() {
             <div className="card-header">
               <span className="card-title">FIFA Digital Infrastructure</span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {criticalCount > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                    background: "#fef2f2", color: "#ef4444", border: "1px solid #fca5a5",
+                  }}>
+                    {criticalCount} Critical
+                  </span>
+                )}
+                {warningCount > 0 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                    background: "#fff7ed", color: "#f97316", border: "1px solid #fed7aa",
+                  }}>
+                    {warningCount} Warning
+                  </span>
+                )}
                 <span style={{ fontSize: 11, color: "var(--color-text-4)" }}>Live status of critical digital assets</span>
               </div>
             </div>
@@ -302,7 +377,7 @@ export default function FIFAOperations() {
               {/* Digital twin diagram (centered, full width) */}
               <div style={{ position: "relative", padding: 16, display: "flex", alignItems: "center", justifyContent: "center", width: "100%", flex: 1 }}>
                 <div style={{ width: "100%", height: "100%", maxWidth: 850, maxHeight: 550, position: "relative" }}>
-                  <DigitalTwin selectedNode={selNode} onSelect={setSelNode} />
+                  <DigitalTwin nodes={nodes} selectedNode={selNode} onSelect={setSelNode} />
                 </div>
               </div>
             </div>
@@ -336,7 +411,7 @@ export default function FIFAOperations() {
               }}>×</button>
             </div>
             <div style={{ overflowY: "auto", paddingBottom: 16 }}>
-              <AssetDetail nodeId={selNode} incidents={incidents} />
+              <AssetDetail nodeId={selNode} nodes={nodes} incidents={incidents} />
             </div>
           </div>
         </div>

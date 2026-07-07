@@ -404,22 +404,34 @@ function ThreatIntelPanel({ inc }) {
           </div>
 
           {/* Grid of intel fields */}
-          {[
-            { k: "Reputation",     v: "Malicious",         vc: "var(--color-red)" },
-            { k: "WHOIS Age",      v: whoisAge != null ? `${whoisAge} days` : "3 days", vc: whoisAge < 30 ? "var(--color-red)" : "var(--color-text)" },
-            { k: "ASN",            v: "AS20836 Datacamp",  vc: "var(--color-text-2)" },
-            { k: "Threat Score",   v: `${tiScore} / 100`,  vc: tiScore > 70 ? "var(--color-red)" : "var(--color-yellow)" },
-            { k: "Known Campaign", v: "FIFA Exploit Kit",  vc: "var(--color-red)" },
-            { k: "Known Campaign", v: "FIFA Exploit Kit",  vc: "var(--color-red)" },
-            { k: "IOC Address",    v: "IP Address",        vc: "var(--color-text-3)" },
-            { k: "MITRE Mapping",  v: techniques.slice(0, 3).join(", ") || "T1190, T1041, T1110", vc: "var(--color-purple)" },
-            { k: "Last Seen",      v: `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, vc: "var(--color-text-3)" },
-          ].map(r => (
-            <div key={r.k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--color-border)" }}>
-              <span style={{ fontSize: 11, color: "var(--color-text-3)" }}>{r.k}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: r.vc, textAlign: "right", maxWidth: "55%", wordBreak: "break-word" }}>{r.v}</span>
-            </div>
-          ))}
+          {(() => {
+            // Derive reputation label from real threat intel score
+            const reputationLabel = tiScore > 70 ? "Malicious" : tiScore > 40 ? "Suspicious" : "Clean";
+            const reputationColor = tiScore > 70 ? "var(--color-red)" : tiScore > 40 ? "var(--color-yellow)" : "var(--color-green-dark)";
+
+            // Real ASN from enrichment data — falls back to "Unknown ASN" (not hardcoded Datacamp)
+            const asn = alerts[0]?.asn || alerts[0]?.org || alerts.find(a => a.asn || a.org)?.asn || "Unknown ASN";
+
+            // Real campaign name from incident — falls back to "Unknown" (not "FIFA Exploit Kit")
+            const campaign = inc.campaign_name || "Unknown";
+
+            const rows = [
+              { k: "Reputation",     v: reputationLabel,                                  vc: reputationColor },
+              { k: "WHOIS Age",      v: whoisAge != null ? `${whoisAge} days` : "—",      vc: whoisAge != null && whoisAge < 30 ? "var(--color-red)" : "var(--color-text)" },
+              { k: "ASN",            v: asn,                                               vc: "var(--color-text-2)" },
+              { k: "Threat Score",   v: `${tiScore} / 100`,                               vc: tiScore > 70 ? "var(--color-red)" : "var(--color-yellow)" },
+              { k: "Known Campaign", v: campaign,                                          vc: campaign !== "Unknown" ? "var(--color-red)" : "var(--color-text-3)" },
+              { k: "IOC Address",    v: "IP Address",                                     vc: "var(--color-text-3)" },
+              { k: "MITRE Mapping",  v: techniques.slice(0, 3).join(", ") || "T1190, T1041, T1110", vc: "var(--color-purple)" },
+              { k: "Last Seen",      v: `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, vc: "var(--color-text-3)" },
+            ];
+            return rows.map(r => (
+              <div key={r.k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--color-border)" }}>
+                <span style={{ fontSize: 11, color: "var(--color-text-3)" }}>{r.k}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: r.vc, textAlign: "right", maxWidth: "55%", wordBreak: "break-word" }}>{r.v}</span>
+              </div>
+            ));
+          })()}
         </div>
       </div>
 
